@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.medicine"
+    namespace = "com.example.sseudeuson"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -11,7 +11,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.medicine"
+        applicationId = "com.example.sseudeuson"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
