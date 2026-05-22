@@ -1,5 +1,9 @@
 *.iml
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
 .gradle
+/.idea/
 /local.properties
 /.idea/caches
 /.idea/libraries
