@@ -2,6 +2,7 @@
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
+.env
 .gradle
 /.idea/
 /local.properties

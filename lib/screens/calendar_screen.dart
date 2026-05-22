@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:sseudeuson/models/user_medication.dart';
+import 'package:sseudeuson/services/medication_service.dart';
 import 'package:sseudeuson/theme/app_colors.dart';
-import 'package:sseudeuson/models/medicine_model.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -13,15 +14,18 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
-  final Map<DateTime, List<MedicationLog>> _logs = DummyData.sampleLogs;
   final TextEditingController _memoController = TextEditingController();
+  final Map<DateTime, List<UserSchedule>> _schedulesByDay = {};
+  final Map<DateTime, List<String>> _memosByDay = {};
+  bool _isLoading = true;
   bool _showMemoInput = false;
+  String? _errorMessage;
 
-  // 약봉투 색상 설정 (봉투별 색상 선택)
-  final Map<String, Color> _bagColors = {
-    'bag1': const Color(0xFF7B6FD4),
-    'bag2': const Color(0xFF4A9EE8),
-  };
+  @override
+  void initState() {
+    super.initState();
+    _loadMonth();
+  }
 
   @override
   void dispose() {
@@ -29,10 +33,59 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.dispose();
   }
 
-  List<MedicationLog> _getLogsForDay(DateTime day) {
-    final key = DateTime(day.year, day.month, day.day);
-    return _logs[key] ?? [];
+  Future<void> _loadMonth() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final from = DateTime(_focusedDay.year, _focusedDay.month, 1);
+    final to = DateTime(_focusedDay.year, _focusedDay.month + 1, 0, 23, 59, 59);
+
+    try {
+      final schedules = await ScheduleService.fetchSchedules(from: from, to: to);
+      final memos = await CalendarMemoService.fetchMemos(from: from, to: to);
+
+      final nextSchedules = <DateTime, List<UserSchedule>>{};
+      for (final schedule in schedules) {
+        final key = _dayKey(schedule.date);
+        nextSchedules.putIfAbsent(key, () => []).add(schedule);
+      }
+
+      final nextMemos = <DateTime, List<String>>{};
+      for (final memo in memos) {
+        final date = DateTime.tryParse((memo['memo_date'] ?? '').toString());
+        final content = (memo['content'] ?? '').toString();
+        if (date == null || content.isEmpty) continue;
+        nextMemos.putIfAbsent(_dayKey(date), () => []).add(content);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _schedulesByDay
+          ..clear()
+          ..addAll(nextSchedules);
+        _memosByDay
+          ..clear()
+          ..addAll(nextMemos);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = '캘린더 조회 실패: $error');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
+
+  List<UserSchedule> _getSchedulesForDay(DateTime day) {
+    return _schedulesByDay[_dayKey(day)] ?? [];
+  }
+
+  List<String> _getMemosForDay(DateTime day) {
+    return _memosByDay[_dayKey(day)] ?? [];
+  }
+
+  DateTime _dayKey(DateTime day) => DateTime(day.year, day.month, day.day);
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +94,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── 캘린더 + 범례 ──
             Container(
               color: Colors.white,
               child: Column(
@@ -52,21 +104,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
             ),
             const Divider(height: 0.5, color: AppColors.lavenderBg),
-            // ── 선택된 날짜 기록 ──
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
-                children: [
-                  _buildSelectedDayHeader(),
-                  const SizedBox(height: 8),
-                  ..._buildLogCards(),
-                  const SizedBox(height: 8),
-                  _buildMemoButton(),
-                  if (_showMemoInput) _buildMemoInput(),
-                  const SizedBox(height: 10),
-                  _buildColorSettings(),
-                ],
-              ),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                  : _errorMessage != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              _errorMessage!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.danger,
+                              ),
+                            ),
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadMonth,
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
+                            children: [
+                              _buildSelectedDayHeader(),
+                              const SizedBox(height: 8),
+                              ..._buildScheduleCards(),
+                              ..._buildMemoCards(),
+                              const SizedBox(height: 8),
+                              _buildMemoButton(),
+                              if (_showMemoInput) _buildMemoInput(),
+                            ],
+                          ),
+                        ),
             ),
           ],
         ),
@@ -74,10 +143,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ── TableCalendar ──
-
   Widget _buildCalendar() {
-    return TableCalendar(
+    return TableCalendar<UserSchedule>(
       firstDay: DateTime.utc(2023, 1, 1),
       lastDay: DateTime.utc(2027, 12, 31),
       focusedDay: _focusedDay,
@@ -90,12 +157,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
       },
       onPageChanged: (focusedDay) {
-        setState(() => _focusedDay = focusedDay);
+        _focusedDay = focusedDay;
+        _loadMonth();
       },
+      eventLoader: _getSchedulesForDay,
       calendarFormat: CalendarFormat.month,
-      eventLoader: _getLogsForDay,
       calendarStyle: CalendarStyle(
-        // 오늘 날짜
         todayDecoration: const BoxDecoration(
           color: AppColors.lavender,
           shape: BoxShape.circle,
@@ -105,7 +172,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
-        // 선택된 날짜
         selectedDecoration: BoxDecoration(
           color: AppColors.lavender.withOpacity(0.2),
           shape: BoxShape.circle,
@@ -116,7 +182,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
-        // 기본 날짜
         defaultTextStyle: const TextStyle(
           fontSize: 12,
           color: AppColors.textPrimary,
@@ -126,7 +191,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           color: AppColors.danger,
         ),
         outsideDaysVisible: false,
-        // 마커는 calendarBuilders로 커스텀
         markersMaxCount: 3,
       ),
       headerStyle: const HeaderStyle(
@@ -161,33 +225,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
           fontWeight: FontWeight.w500,
         ),
       ),
-      calendarBuilders: CalendarBuilders(
-        // 커스텀 마커 (약봉투별 컬러 점)
+      calendarBuilders: CalendarBuilders<UserSchedule>(
         markerBuilder: (context, day, events) {
-          if (events.isEmpty) return const SizedBox();
-          final logs = events.cast<MedicationLog>();
+          final hasMemo = _getMemosForDay(day).isNotEmpty;
+          if (events.isEmpty && !hasMemo) return const SizedBox();
 
           return Positioned(
             bottom: 2,
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              children: logs.take(3).map((log) {
-                final isMissed = !log.taken;
-                final color = isMissed
-                    ? AppColors.danger
-                    : (log.bagName == '아침약 봉투'
-                        ? _bagColors['bag1']!
-                        : _bagColors['bag2']!);
-                return Container(
-                  width: 5,
-                  height: 5,
-                  margin: const EdgeInsets.symmetric(horizontal: 1),
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
+              children: [
+                ...events.take(3).map((schedule) {
+                  return Container(
+                    width: 5,
+                    height: 5,
+                    margin: const EdgeInsets.symmetric(horizontal: 1),
+                    decoration: BoxDecoration(
+                      color: schedule.isTaken
+                          ? AppColors.success
+                          : AppColors.danger,
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                }),
+                if (hasMemo)
+                  Container(
+                    width: 5,
+                    height: 5,
+                    margin: const EdgeInsets.symmetric(horizontal: 1),
+                    decoration: const BoxDecoration(
+                      color: AppColors.lavender,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                );
-              }).toList(),
+              ],
             ),
           );
         },
@@ -195,77 +266,69 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ── 범례 ──
-
   Widget _buildLegend() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(14, 4, 14, 10),
       child: Row(
         children: [
-          _LegendDot(
-            color: _bagColors['bag1']!,
-            label: '아침약 봉투',
-          ),
-          const SizedBox(width: 14),
-          _LegendDot(
-            color: _bagColors['bag2']!,
-            label: '저녁약 봉투',
-          ),
-          const SizedBox(width: 14),
-          const _LegendDot(
-            color: AppColors.danger,
-            label: '미복용',
-          ),
+          _LegendDot(color: AppColors.success, label: '복용 완료'),
+          SizedBox(width: 14),
+          _LegendDot(color: AppColors.danger, label: '미복용'),
+          SizedBox(width: 14),
+          _LegendDot(color: AppColors.lavender, label: '메모'),
         ],
       ),
     );
   }
 
-  // ── 선택된 날짜 헤더 ──
-
   Widget _buildSelectedDayHeader() {
     final month = _selectedDay.month;
     final day = _selectedDay.day;
-    return Text(
-      '$month월 ${day}일 기록',
-      style: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w700,
-        color: AppColors.textPrimary,
-      ),
+    final schedules = _getSchedulesForDay(_selectedDay);
+    final done = schedules.where((item) => item.isTaken).length;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            '$month월 ${day}일 복용 일정',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+        Text(
+          '${done}/${schedules.length} 완료',
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppColors.lavenderDark,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 
-  // ── 복약 기록 카드들 ──
-
-  List<Widget> _buildLogCards() {
-    final logs = _getLogsForDay(_selectedDay);
-    if (logs.isEmpty) {
+  List<Widget> _buildScheduleCards() {
+    final schedules = _getSchedulesForDay(_selectedDay);
+    if (schedules.isEmpty) {
       return [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.cardBorder, width: 0.5),
-          ),
-          child: const Center(
-            child: Text(
-              '이 날의 복약 기록이 없습니다.',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textHint,
-              ),
-            ),
-          ),
+        _EmptyCard(
+          text: '이 날의 복약 일정이 없습니다.',
         ),
       ];
     }
 
-    return logs.map((log) {
-      final bagColor = log.bagName == '아침약 봉투'
-          ? _bagColors['bag1']!
-          : _bagColors['bag2']!;
+    return schedules.map((schedule) {
+      final medication = schedule.medication;
+      final drug = medication?.drug;
+      final name = medication?.displayName ?? '등록 약';
+      final subtitle = [
+        schedule.time,
+        if (drug?.company.isNotEmpty == true) drug!.company,
+      ].join(' · ');
 
       return Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -275,125 +338,101 @@ class _CalendarScreenState extends State<CalendarScreen> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.cardBorder, width: 0.5),
         ),
-        child: Column(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: bagColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    log.bagName,
+            Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(top: 5),
+              decoration: BoxDecoration(
+                color: schedule.isTaken ? AppColors.success : AppColors.danger,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
                     ),
                   ),
-                ),
-                // 복용 상태
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: log.taken
-                        ? AppColors.successBg
-                        : AppColors.dangerBg,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    log.taken
-                        ? (log.takenAt != null
-                            ? '${log.takenAt!.hour.toString().padLeft(2, '0')}:${log.takenAt!.minute.toString().padLeft(2, '0')} 완료'
-                            : '완료')
-                        : '미복용',
-                    style: TextStyle(
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
                       fontSize: 10,
-                      color: log.taken
-                          ? const Color(0xFF2E7D32)
-                          : AppColors.danger,
+                      color: AppColors.textHint,
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // 약물 칩
-            Wrap(
-              spacing: 5,
-              runSpacing: 5,
-              children: log.medicineNames.map((name) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: log.taken
-                        ? AppColors.successBg
-                        : AppColors.dangerBg,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    name,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: log.taken
-                          ? const Color(0xFF2E7D32)
-                          : AppColors.danger,
+                  if (medication?.instruction.isNotEmpty == true) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      medication!.instruction,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: AppColors.lavenderDark,
+                      ),
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
-            // 메모
-            if (log.memo.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.lavenderBg,
-                  borderRadius: BorderRadius.circular(8),
-                  border: const Border(
-                    left: BorderSide(color: AppColors.lavender, width: 2),
-                  ),
-                ),
-                child: Text(
-                  log.memo,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.lavenderDark,
-                    height: 1.5,
-                  ),
-                ),
+                  ],
+                ],
               ),
-            ],
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => _toggleTaken(schedule),
+              child: Text(schedule.isTaken ? '취소' : '복용'),
+            ),
           ],
         ),
       );
     }).toList();
   }
 
-  // ── 메모 추가 버튼 ──
+  List<Widget> _buildMemoCards() {
+    final memos = _getMemosForDay(_selectedDay);
+    if (memos.isEmpty) return [];
+
+    return memos.map((memo) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.lavenderBg,
+          borderRadius: BorderRadius.circular(10),
+          border: const Border(
+            left: BorderSide(color: AppColors.lavender, width: 2),
+          ),
+        ),
+        child: Text(
+          memo,
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppColors.lavenderDark,
+            height: 1.5,
+          ),
+        ),
+      );
+    }).toList();
+  }
 
   Widget _buildMemoButton() {
     return OutlinedButton.icon(
       onPressed: () => setState(() => _showMemoInput = !_showMemoInput),
-      icon: const Icon(Icons.edit_outlined,
-          size: 14, color: AppColors.lavender),
+      icon: const Icon(
+        Icons.edit_outlined,
+        size: 14,
+        color: AppColors.lavender,
+      ),
       label: const Text(
-        '롱탭 또는 탭으로 날짜별 메모 추가',
+        '날짜별 메모 추가',
         style: TextStyle(color: AppColors.lavender, fontSize: 11),
       ),
       style: OutlinedButton.styleFrom(
@@ -405,8 +444,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
     );
   }
-
-  // ── 메모 입력 폼 ──
 
   Widget _buildMemoInput() {
     return Container(
@@ -420,27 +457,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.edit_outlined,
-                  size: 13, color: AppColors.lavender),
-              const SizedBox(width: 5),
-              Text(
-                '${_selectedDay.month}월 ${_selectedDay.day}일 메모',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
+          Text(
+            '${_selectedDay.month}월 ${_selectedDay.day}일 메모',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _memoController,
             maxLines: 3,
             decoration: const InputDecoration(
-              hintText: '오늘의 복약 메모를 입력하세요...',
+              hintText: '처방 사유, 특이사항, 복용 실수 등을 기록하세요.',
             ),
           ),
           const SizedBox(height: 10),
@@ -448,17 +478,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             children: [
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () {
-                    // TODO: 메모 저장 로직
-                    setState(() => _showMemoInput = false);
-                    _memoController.clear();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('메모가 저장되었습니다.'),
-                        backgroundColor: AppColors.lavender,
-                      ),
-                    );
-                  },
+                  onPressed: _saveMemo,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
@@ -489,101 +509,67 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ── 약봉투 색깔 설정 ──
+  Future<void> _toggleTaken(UserSchedule schedule) async {
+    await ScheduleService.setTaken(
+      scheduleId: schedule.id,
+      isTaken: !schedule.isTaken,
+    );
+    await _loadMonth();
+  }
 
-  Widget _buildColorSettings() {
-    final bagNames = {'bag1': '아침약 봉투', 'bag2': '저녁약 봉투'};
+  Future<void> _saveMemo() async {
+    final content = _memoController.text.trim();
+    if (content.isEmpty) return;
+
+    try {
+      await CalendarMemoService.saveMemo(
+        date: _selectedDay,
+        content: content,
+      );
+      _memoController.clear();
+      setState(() => _showMemoInput = false);
+      await _loadMonth();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('메모 저장 실패: $error'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+}
+
+class _EmptyCard extends StatelessWidget {
+  final String text;
+
+  const _EmptyCard({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.cardBorder, width: 0.5),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.palette_outlined,
-                  size: 14, color: AppColors.lavender),
-              SizedBox(width: 5),
-              Text(
-                '약봉투 색깔 설정',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ...bagNames.entries.map((entry) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      entry.value,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  Row(
-                    children: AppColors.bagColors.map((color) {
-                      final isSelected = _bagColors[entry.key] == color;
-                      return GestureDetector(
-                        onTap: () => setState(
-                          () => _bagColors[entry.key] = color,
-                        ),
-                        child: Container(
-                          margin: const EdgeInsets.only(left: 6),
-                          width: 18,
-                          height: 18,
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                            border: isSelected
-                                ? Border.all(
-                                    color: Colors.white,
-                                    width: 2,
-                                    strokeAlign:
-                                        BorderSide.strokeAlignOutside,
-                                  )
-                                : null,
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: color.withOpacity(0.5),
-                                      blurRadius: 4,
-                                      spreadRadius: 1,
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        ],
+      child: Center(
+        child: Text(
+          text,
+          style: const TextStyle(fontSize: 12, color: AppColors.textHint),
+        ),
       ),
     );
   }
 }
 
-// ─── 범례 점 ─────────────────────────────────────────────────────────────────
-
 class _LegendDot extends StatelessWidget {
   final Color color;
   final String label;
+
   const _LegendDot({required this.color, required this.label});
 
   @override

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sseudeuson/theme/app_colors.dart';
 import 'package:sseudeuson/models/medicine_model.dart';
-import 'package:sseudeuson/screens/bag_add_screen.dart';
 import 'package:sseudeuson/widgets/interaction_badge.dart';
 
 class BagDetailScreen extends StatelessWidget {
@@ -41,22 +40,6 @@ class BagDetailScreen extends StatelessWidget {
           ],
         ),
         toolbarHeight: 60,
-        actions: [
-          TextButton.icon(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => BagAddScreen(targetBag: null),
-              ),
-            ),
-            icon: const Icon(Icons.edit_outlined,
-                size: 15, color: AppColors.lavender),
-            label: const Text(
-              '수정',
-              style: TextStyle(color: AppColors.lavender, fontSize: 12),
-            ),
-          ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
