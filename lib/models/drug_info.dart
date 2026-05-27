@@ -91,6 +91,7 @@ class DrugInfo {
 
 enum DrugWarningType {
   comboContraindication,
+  ingredientDuplication,
   dosage,
   duration,
   efficacyDuplication,

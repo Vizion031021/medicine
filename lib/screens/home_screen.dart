@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:sseudeuson/theme/app_colors.dart';
-import 'package:sseudeuson/models/medicine_model.dart';
-import 'package:sseudeuson/widgets/interaction_badge.dart';
 import 'package:sseudeuson/services/auth_service.dart';
 import 'package:sseudeuson/services/medication_service.dart';
 import 'package:sseudeuson/screens/auth/login_screen.dart';
@@ -157,8 +155,6 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildTodaySchedule(),
               const SizedBox(height: 6),
               Container(height: 6, color: AppColors.lavenderBg),
-              const SizedBox(height: 10),
-              _buildRecentInteractions(),
               const SizedBox(height: 80),
             ],
           ),
@@ -354,77 +350,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── 최근 상호작용 ──
-
-  Widget _buildRecentInteractions() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '최근 확인한 상호작용',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.cardBorder, width: 0.5),
-            ),
-            child: Column(
-              children: [
-                _InteractionRow(
-                  drug1: '메트포르민',
-                  drug2: '글리메피리드',
-                  severity: InteractionSeverity.warning,
-                  isLast: false,
-                ),
-                _InteractionRow(
-                  drug1: '암로디핀',
-                  drug2: '에날라프릴',
-                  severity: InteractionSeverity.safe,
-                  isLast: true,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          // 경고 배너
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.dangerBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.warning_amber_rounded,
-                    color: AppColors.danger, size: 16),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    '저혈당 위험   메트포르민 + 글리메피리드 병용 시 주의. 식사와 함께 복용하고 혈당을 모니터링하세요.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFFC62828),
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // ─── 복약 일정 행 ───────────────────────────────────────────────────────────
@@ -609,80 +534,6 @@ class _MealBadge extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ─── 상호작용 행 ─────────────────────────────────────────────────────────────
-
-class _InteractionRow extends StatelessWidget {
-  final String drug1;
-  final String drug2;
-  final InteractionSeverity severity;
-  final bool isLast;
-
-  const _InteractionRow({
-    required this.drug1,
-    required this.drug2,
-    required this.severity,
-    required this.isLast,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          child: Row(
-            children: [
-              InteractionBadge(severity: severity),
-              const SizedBox(width: 8),
-              _DrugChip(label: drug1),
-              const SizedBox(width: 5),
-              Text(
-                severity == InteractionSeverity.safe ? '+' : '✕',
-                style: TextStyle(
-                  color: severity == InteractionSeverity.safe
-                      ? AppColors.success
-                      : AppColors.danger,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(width: 5),
-              _DrugChip(label: drug2),
-            ],
-          ),
-        ),
-        if (!isLast)
-          const Divider(
-            height: 0.5,
-            color: AppColors.divider,
-            indent: 14,
-            endIndent: 14,
-          ),
-      ],
-    );
-  }
-}
-
-class _DrugChip extends StatelessWidget {
-  final String label;
-  const _DrugChip({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.lavenderBg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 10, color: AppColors.lavenderDark),
       ),
     );
   }

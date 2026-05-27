@@ -18,6 +18,9 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
   late final Future<String> _ingredientNameFuture;
   final Set<_MealSlot> _selectedSlots = {_MealSlot.breakfast};
   _MealTiming _mealTiming = _MealTiming.after;
+  late DateTime _startDate;
+  late DateTime _endDate;
+  int _selectedPresetDays = 7;
   bool _isSaving = false;
 
   @override
@@ -25,6 +28,9 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     super.initState();
     _warningsFuture = DrugService.fetchWarnings(widget.drug);
     _ingredientNameFuture = DrugService.fetchIngredientName(widget.drug);
+    final now = DateTime.now();
+    _startDate = DateTime(now.year, now.month, now.day);
+    _endDate = DateTime(now.year, now.month, now.day + 6);
   }
 
   @override
@@ -227,6 +233,61 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                     color: AppColors.textHint,
                   ),
                 ),
+                const SizedBox(height: 14),
+                const Text(
+                  '복용 기간',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: const [
+                    _DurationPreset(days: 3, label: '3일'),
+                    _DurationPreset(days: 7, label: '7일'),
+                    _DurationPreset(days: 14, label: '14일'),
+                    _DurationPreset(days: 30, label: '한달'),
+                  ].map((preset) {
+                    return _ChoiceChip(
+                      label: preset.label,
+                      isSelected: _selectedPresetDays == preset.days,
+                      onTap: () => _applyPreset(preset.days),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _DateButton(
+                        label: '시작',
+                        value: _formatDate(_startDate),
+                        onTap: () => _pickStartDate(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _DateButton(
+                        label: '종료',
+                        value: _formatDate(_endDate),
+                        onTap: () => _pickEndDate(),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '캘린더에는 ${_formatDate(_startDate)}부터 ${_formatDate(_endDate)}까지만 복용 일정이 생성됩니다.',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textHint,
+                    height: 1.4,
+                  ),
+                ),
               ],
             ),
           ),
@@ -256,13 +317,15 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
       final slots = _selectedSlots.toList()
         ..sort((a, b) => a.hour.compareTo(b.hour));
       final timeLabels = slots.map((slot) => slot.label).join(', ');
-      final instruction = '$timeLabels ${_mealTiming.label} 복용';
+      final instruction =
+          '$timeLabels ${_mealTiming.label} 복용 · ${_formatDate(_startDate)}~${_formatDate(_endDate)}';
       await MedicationService.addMedication(
         drug: widget.drug,
         instruction: instruction,
-        scheduleTimes: slots
-            .map((slot) => '${slot.hour.toString().padLeft(2, '0')}:00:00')
-            .toList(),
+        durationDays: _durationDays,
+        startDate: _startDate,
+        endDate: _endDate,
+        scheduleTimes: slots.map((slot) => slot.scheduleTime).toList(),
         mealTimingLabel: _mealTiming.label,
       );
       if (!mounted) return;
@@ -284,6 +347,72 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
       if (mounted) setState(() => _isSaving = false);
     }
   }
+
+  int get _durationDays => _endDate.difference(_startDate).inDays + 1;
+
+  void _applyPreset(int days) {
+    setState(() {
+      _selectedPresetDays = days;
+      _endDate = DateTime(
+        _startDate.year,
+        _startDate.month,
+        _startDate.day + days - 1,
+      );
+    });
+  }
+
+  Future<void> _pickStartDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+    );
+    if (picked == null) return;
+    setState(() {
+      final presetDays = _selectedPresetDays;
+      _startDate = DateTime(picked.year, picked.month, picked.day);
+      if (presetDays > 0) {
+        _endDate = DateTime(
+          _startDate.year,
+          _startDate.month,
+          _startDate.day + presetDays - 1,
+        );
+      } else if (_endDate.isBefore(_startDate)) {
+        _endDate = _startDate;
+      }
+      _selectedPresetDays = _matchingPresetDays;
+    });
+  }
+
+  Future<void> _pickEndDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate.isBefore(_startDate) ? _startDate : _endDate,
+      firstDate: _startDate,
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+    );
+    if (picked == null) return;
+    setState(() {
+      _endDate = DateTime(picked.year, picked.month, picked.day);
+      _selectedPresetDays = _matchingPresetDays;
+    });
+  }
+
+  int get _matchingPresetDays {
+    final days = _durationDays;
+    return const [3, 7, 14, 30].contains(days) ? days : 0;
+  }
+
+  String _formatDate(DateTime date) =>
+      '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
+}
+
+class _DurationPreset {
+  final int days;
+  final String label;
+
+  const _DurationPreset({required this.days, required this.label});
 }
 
 enum _MealSlot {
@@ -314,6 +443,8 @@ enum _MealSlot {
   }
 
   String get timeText => '${hour.toString().padLeft(2, '0')}:00';
+
+  String get scheduleTime => '${hour.toString().padLeft(2, '0')}:00:00';
 }
 
 enum _MealTiming {
@@ -364,6 +495,61 @@ class _ChoiceChip extends StatelessWidget {
             color: isSelected ? Colors.white : AppColors.lavenderDark,
             fontWeight: FontWeight.w600,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DateButton extends StatelessWidget {
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  const _DateButton({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.lavenderBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.lavenderBorder, width: 0.7),
+        ),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                color: AppColors.textHint,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.lavenderDark,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.calendar_today_outlined,
+              size: 13,
+              color: AppColors.lavender,
+            ),
+          ],
         ),
       ),
     );

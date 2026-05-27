@@ -38,67 +38,6 @@ extension MealTimingExt on MealTiming {
     }
   }
 }
-// ─── 상호작용 심각도 ────────────────────────────────────────────────────────
-
-enum InteractionSeverity { safe, caution, warning, danger }
-
-extension InteractionSeverityExt on InteractionSeverity {
-  String get label {
-    switch (this) {
-      case InteractionSeverity.safe:
-        return '✓ 안전';
-      case InteractionSeverity.caution:
-        return '! 주의';
-      case InteractionSeverity.warning:
-        return '⚠ 주의';
-      case InteractionSeverity.danger:
-        return '⛔ 위험';
-    }
-  }
-
-  Color get color {
-    switch (this) {
-      case InteractionSeverity.safe:
-        return const Color(0xFF3B9E72);
-      case InteractionSeverity.caution:
-        return const Color(0xFFEF9F27);
-      case InteractionSeverity.warning:
-        return const Color(0xFFEF9F27);
-      case InteractionSeverity.danger:
-        return const Color(0xFFE24B4A);
-    }
-  }
-
-  Color get bgColor {
-    switch (this) {
-      case InteractionSeverity.safe:
-        return const Color(0xFFE8F5E9);
-      case InteractionSeverity.caution:
-        return const Color(0xFFFEF3E2);
-      case InteractionSeverity.warning:
-        return const Color(0xFFFEF3E2);
-      case InteractionSeverity.danger:
-        return const Color(0xFFFDEEEE);
-    }
-  }
-}
-
-// ─── 약물 상호작용 ──────────────────────────────────────────────────────────
-
-class DrugInteraction {
-  final String drug1;
-  final String drug2;
-  final InteractionSeverity severity;
-  final String description;
-
-  const DrugInteraction({
-    required this.drug1,
-    required this.drug2,
-    required this.severity,
-    required this.description,
-  });
-}
-
 // ─── 약물 모델 ──────────────────────────────────────────────────────────────
 
 class Medicine {
@@ -114,7 +53,6 @@ class Medicine {
   String memo;
   List<String> cautions;
   List<String> sideEffects;
-  List<DrugInteraction> interactions;
 
   Medicine({
     required this.id,
@@ -129,7 +67,6 @@ class Medicine {
     this.memo = '',
     this.cautions = const [],
     this.sideEffects = const [],
-    this.interactions = const [],
   });
 
   Medicine copyWith({
@@ -152,7 +89,6 @@ class Medicine {
       memo: memo ?? this.memo,
       cautions: cautions,
       sideEffects: sideEffects,
-      interactions: interactions,
     );
   }
 }
@@ -171,19 +107,4 @@ class MedicineBag {
     required this.color,
     List<Medicine>? medicines,
   }) : medicines = medicines ?? [];
-
-  bool get hasWarning => _checkInteractions();
-
-  bool _checkInteractions() {
-    for (final med in medicines) {
-      for (final interaction in med.interactions) {
-        if (medicines.any((m) =>
-            m.name == interaction.drug2 &&
-            interaction.severity != InteractionSeverity.safe)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
 }

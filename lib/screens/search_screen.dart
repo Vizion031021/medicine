@@ -79,6 +79,8 @@ class _SearchScreenState extends State<SearchScreen> {
       try {
         final warnings = await DrugService.compareDrugs(_selectedForCompare);
         if (mounted) setState(() => _compareWarnings = warnings);
+      } catch (_) {
+        if (mounted) setState(() => _compareWarnings = []);
       } finally {
         if (mounted) setState(() => _isComparing = false);
       }

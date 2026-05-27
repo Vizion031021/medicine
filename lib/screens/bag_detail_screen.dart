@@ -1,7 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:sseudeuson/theme/app_colors.dart';
 import 'package:sseudeuson/models/medicine_model.dart';
-import 'package:sseudeuson/widgets/interaction_badge.dart';
 
 class BagDetailScreen extends StatelessWidget {
   final Medicine medicine;
@@ -95,67 +94,6 @@ class BagDetailScreen extends StatelessWidget {
                 ],
               ],
             ),
-          ),
-
-          // ── 상호작용 ──
-          _SectionCard(
-            icon: Icons.compare_arrows_rounded,
-            iconColor: AppColors.warning,
-            title: '상호작용',
-            child: medicine.interactions.isEmpty
-                ? const Text(
-                    '알려진 주요 상호작용이 없습니다.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textHint,
-                    ),
-                  )
-                : Column(
-                    children: medicine.interactions.map((interaction) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                _DrugChip(label: interaction.drug1),
-                                const SizedBox(width: 6),
-                                Text(
-                                  interaction.severity ==
-                                          InteractionSeverity.safe
-                                      ? '+'
-                                      : '✕',
-                                  style: TextStyle(
-                                    color: interaction.severity ==
-                                            InteractionSeverity.safe
-                                        ? AppColors.success
-                                        : AppColors.danger,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                _DrugChip(label: interaction.drug2),
-                                const Spacer(),
-                                InteractionBadge(
-                                    severity: interaction.severity),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              interaction.description,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                                height: 1.6,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
           ),
 
           // ── 주의사항 ──
@@ -319,26 +257,6 @@ class _InfoBadge extends StatelessWidget {
       child: Text(
         label,
         style: const TextStyle(fontSize: 11, color: AppColors.lavenderDark),
-      ),
-    );
-  }
-}
-
-class _DrugChip extends StatelessWidget {
-  final String label;
-  const _DrugChip({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.lavenderBg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 10, color: AppColors.lavenderDark),
       ),
     );
   }

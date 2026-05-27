@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:sseudeuson/models/drug_info.dart';
 import 'package:sseudeuson/theme/app_colors.dart';
 import 'package:sseudeuson/models/medicine_model.dart';
 import 'package:sseudeuson/models/user_medication.dart';
 import 'package:sseudeuson/screens/bag_detail_screen.dart';
 import 'package:sseudeuson/screens/search_screen.dart';
+import 'package:sseudeuson/services/drug_service.dart';
 import 'package:sseudeuson/services/medication_service.dart';
 
 class BagScreen extends StatefulWidget {
@@ -16,6 +18,7 @@ class BagScreen extends StatefulWidget {
 class _BagScreenState extends State<BagScreen> {
   late List<MedicineBag> _bags;
   List<UserSchedule> _todaySchedules = [];
+  List<DrugWarning> _bagWarnings = [];
   final Set<String> _expandedBags = {};
   bool _isLoading = true;
   String? _errorMessage;
@@ -40,6 +43,18 @@ class _BagScreenState extends State<BagScreen> {
         from: DateTime(now.year, now.month, now.day),
         to: DateTime(now.year, now.month, now.day, 23, 59, 59),
       );
+      final drugs = medications
+          .map((item) => item.drug)
+          .whereType<DrugInfo>()
+          .toList();
+      var bagWarnings = <DrugWarning>[];
+      if (drugs.length > 1) {
+        try {
+          bagWarnings = await DrugService.compareDrugs(drugs);
+        } catch (_) {
+          bagWarnings = [];
+        }
+      }
       final medicines = medications.map((item) {
         final drug = item.drug;
         return Medicine(
@@ -68,6 +83,7 @@ class _BagScreenState extends State<BagScreen> {
           ),
         ];
         _todaySchedules = todaySchedules;
+        _bagWarnings = bagWarnings;
         _expandedBags.add('supabase-bag');
       });
     } catch (error) {
@@ -158,6 +174,7 @@ class _BagScreenState extends State<BagScreen> {
                     ..._bags.map(
                       (bag) => _BagCard(
                         bag: bag,
+                        warnings: _bagWarnings,
                         isExpanded: _expandedBags.contains(bag.id),
                         onToggle: () => setState(() {
                           if (_expandedBags.contains(bag.id)) {
@@ -475,6 +492,7 @@ class _MealBadge extends StatelessWidget {
 
 class _BagCard extends StatelessWidget {
   final MedicineBag bag;
+  final List<DrugWarning> warnings;
   final bool isExpanded;
   final VoidCallback onToggle;
   final ValueChanged<Medicine> onMedicineTap;
@@ -482,6 +500,7 @@ class _BagCard extends StatelessWidget {
 
   const _BagCard({
     required this.bag,
+    required this.warnings,
     required this.isExpanded,
     required this.onToggle,
     required this.onMedicineTap,
@@ -541,7 +560,7 @@ class _BagCard extends StatelessWidget {
                     ),
                   ),
                   // 상태 배지
-                  _StatusBadge(hasWarning: bag.hasWarning),
+                  _StatusBadge(hasWarning: warnings.isNotEmpty),
                   const SizedBox(width: 8),
                   AnimatedRotation(
                     turns: isExpanded ? 0.5 : 0,
@@ -636,34 +655,11 @@ class _BagCard extends StatelessWidget {
                       );
                     }).toList(),
                   ),
-                  // 경고 스트립
-                  if (bag.hasWarning) ...[
+                  if (warnings.isNotEmpty) ...[
                     const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(9),
-                      decoration: BoxDecoration(
-                        color: AppColors.warningBg,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.warning_amber_rounded,
-                              color: AppColors.warning, size: 14),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _getWarningText(bag),
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFF854F0B),
-                                height: 1.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ...warnings.take(4).map(
+                          (warning) => _WarningStrip(warning: warning),
+                        ),
                   ] else ...[
                     const SizedBox(height: 8),
                     Container(
@@ -681,7 +677,7 @@ class _BagCard extends StatelessWidget {
                               color: AppColors.success, size: 13),
                           SizedBox(width: 5),
                           Text(
-                            '심각한 상호작용 없음',
+                            '현재 DB 기준 확인된 병용 금기 정보 없음',
                             style: TextStyle(
                               fontSize: 10,
                               color: Color(0xFF2E7D32),
@@ -699,19 +695,63 @@ class _BagCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  String _getWarningText(MedicineBag bag) {
-    for (final med in bag.medicines) {
-      for (final interaction in med.interactions) {
-        final hasDrug2 = bag.medicines.any((m) => m.name.contains(
-            interaction.drug2.split(' ').first));
-        if (hasDrug2 &&
-            interaction.severity != InteractionSeverity.safe) {
-          return '${interaction.drug1} + ${interaction.drug2}: ${interaction.description}';
-        }
-      }
-    }
-    return '상호작용 주의사항이 있습니다. 의사와 상담하세요.';
+class _WarningStrip extends StatelessWidget {
+  final DrugWarning warning;
+
+  const _WarningStrip({required this.warning});
+
+  @override
+  Widget build(BuildContext context) {
+    final isHigh = warning.isHighRisk;
+    final color = isHigh ? AppColors.danger : AppColors.warning;
+    final bg = isHigh ? AppColors.dangerBg : AppColors.warningBg;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isHigh ? Icons.dangerous_outlined : Icons.warning_amber_rounded,
+            color: color,
+            size: 14,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${warning.title} · 위험도 ${warning.severity}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  warning.message,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textSecondary,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -730,7 +770,7 @@ class _StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
-        hasWarning ? '⚠ 주의' : '✓ 안전',
+        hasWarning ? '⚠ 주의' : '✓ 확인',
         style: TextStyle(
           fontSize: 10,
           color: hasWarning

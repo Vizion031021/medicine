@@ -38,6 +38,8 @@ class MedicationService {
     String customName = '',
     String instruction = '',
     int durationDays = 7,
+    DateTime? startDate,
+    DateTime? endDate,
     List<String> scheduleTimes = const ['08:00:00'],
     String mealTimingLabel = '식후',
   }) async {
@@ -85,6 +87,8 @@ class MedicationService {
       medicationId: medication.id,
       medicationName: medication.displayName,
       durationDays: durationDays,
+      startDate: startDate,
+      endDate: endDate,
       scheduleTimes: scheduleTimes,
       mealTimingLabel: mealTimingLabel,
     );
@@ -97,16 +101,24 @@ class MedicationService {
     required String medicationId,
     required String medicationName,
     required int durationDays,
+    required DateTime? startDate,
+    required DateTime? endDate,
     required List<String> scheduleTimes,
     required String mealTimingLabel,
   }) async {
-    final days = durationDays <= 0 ? 30 : durationDays;
-
     final today = DateTime.now();
+    final start = _dateOnlyDate(startDate ?? today);
+    final fallbackEnd = DateTime(start.year, start.month, start.day + durationDays - 1);
+    final end = _dateOnlyDate(endDate ?? fallbackEnd);
+    final days = end.difference(start).inDays + 1;
+    if (days <= 0) {
+      throw StateError('복용 종료일은 시작일 이후여야 합니다.');
+    }
+
     final rows = <Map<String, dynamic>>[];
     final ruleRows = <Map<String, dynamic>>[];
     for (var dayOffset = 0; dayOffset < days; dayOffset++) {
-      final date = DateTime(today.year, today.month, today.day + dayOffset);
+      final date = DateTime(start.year, start.month, start.day + dayOffset);
       for (final time in scheduleTimes) {
         final scheduledAt = _combineDateAndTime(date, time);
         final mealLabel = _mealLabelFromTime(time);
@@ -144,9 +156,10 @@ class MedicationService {
     }
 
     for (var dayOffset = 0; dayOffset < days && dayOffset < 7; dayOffset++) {
-      final date = DateTime(today.year, today.month, today.day + dayOffset);
+      final date = DateTime(start.year, start.month, start.day + dayOffset);
       for (final time in scheduleTimes) {
         final scheduledAt = _combineDateAndTime(date, time);
+        if (!scheduledAt.isAfter(DateTime.now())) continue;
         final mealLabel = _mealLabelFromTime(time);
         try {
           await NotificationService.scheduleMedicationReminder(
@@ -169,6 +182,9 @@ class MedicationService {
     final minute = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
     return DateTime(date.year, date.month, date.day, hour, minute);
   }
+
+  static DateTime _dateOnlyDate(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
 
   static String _mealLabelFromTime(String time) {
     final hour = int.tryParse(time.split(':').first) ?? 8;
@@ -278,17 +294,29 @@ class ScheduleService {
 
       final instruction = (medication['instruction'] ?? '').toString();
       final scheduleTimes = _scheduleTimesFromInstruction(instruction);
+      final bounds = await _fetchScheduleBounds(
+        userId: userId,
+        medicationId: medicationId,
+      );
+      final effectiveFrom = bounds == null || fromDay.isAfter(bounds.$1)
+          ? fromDay
+          : bounds.$1;
+      final effectiveTo = bounds == null || toDay.isBefore(bounds.$2)
+          ? toDay
+          : bounds.$2;
+      if (effectiveTo.isBefore(effectiveFrom)) continue;
+
       final existingRows = await _client
           .from('user_schedules')
           .select('schedule_date,schedule_time')
           .eq('user_id', userId)
           .eq('user_medication_id', medicationId)
           .isFilter('deleted_at', null)
-          .gte('schedule_date', fromDay.toIso8601String())
+          .gte('schedule_date', effectiveFrom.toIso8601String())
           .lte('schedule_date', DateTime(
-            toDay.year,
-            toDay.month,
-            toDay.day,
+            effectiveTo.year,
+            effectiveTo.month,
+            effectiveTo.day,
             23,
             59,
             59,
@@ -306,12 +334,14 @@ class ScheduleService {
       }
 
       final rows = <Map<String, dynamic>>[];
+      final effectiveDayCount = effectiveTo.difference(effectiveFrom).inDays + 1;
       for (var dayOffset = 0; dayOffset < dayCount; dayOffset++) {
         final date = DateTime(
-          fromDay.year,
-          fromDay.month,
-          fromDay.day + dayOffset,
+          effectiveFrom.year,
+          effectiveFrom.month,
+          effectiveFrom.day + dayOffset,
         );
+        if (dayOffset >= effectiveDayCount) break;
         for (final time in scheduleTimes) {
           final key = '${_dateOnly(date)}|$time';
           if (existingKeys.contains(key)) continue;
@@ -338,6 +368,33 @@ class ScheduleService {
     if (instruction.contains('저녁')) times.add('18:00:00');
     if (times.isEmpty) times.add('09:00:00');
     return times;
+  }
+
+  static Future<(DateTime, DateTime)?> _fetchScheduleBounds({
+    required String userId,
+    required String medicationId,
+  }) async {
+    final rows = await _client
+        .from('user_schedules')
+        .select('schedule_date')
+        .eq('user_id', userId)
+        .eq('user_medication_id', medicationId)
+        .isFilter('deleted_at', null)
+        .order('schedule_date');
+
+    DateTime? minDate;
+    DateTime? maxDate;
+    for (final raw in rows as List) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      final date = DateTime.tryParse((row['schedule_date'] ?? '').toString());
+      if (date == null) continue;
+      final day = DateTime(date.year, date.month, date.day);
+      if (minDate == null || day.isBefore(minDate)) minDate = day;
+      if (maxDate == null || day.isAfter(maxDate)) maxDate = day;
+    }
+
+    if (minDate == null || maxDate == null) return null;
+    return (minDate, maxDate);
   }
 
   static String _dateOnly(DateTime date) =>
