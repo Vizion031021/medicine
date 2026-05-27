@@ -3,7 +3,7 @@ import 'package:sseudeuson/models/drug_info.dart';
 import 'package:sseudeuson/models/user_medication.dart';
 import 'package:sseudeuson/services/auth_service.dart';
 import 'package:sseudeuson/services/drug_service.dart';
-import 'package:sseudeuson/services/notification_service.dart';
+// import 'package:sseudeuson/services/notification_service.dart';
 
 class MedicationService {
   static final SupabaseClient _client = Supabase.instance.client;
@@ -161,17 +161,17 @@ class MedicationService {
         final scheduledAt = _combineDateAndTime(date, time);
         if (!scheduledAt.isAfter(DateTime.now())) continue;
         final mealLabel = _mealLabelFromTime(time);
-        try {
-          await NotificationService.scheduleMedicationReminder(
-            id: '$medicationId-$dayOffset-$time'.hashCode.abs(),
-            title: '복용 알림',
-            body:
-                '$mealLabel ${_mealTimingMessage(mealTimingLabel)} 약 복용하셨나요? ($medicationName)',
-            scheduledAt: scheduledAt,
-          );
-        } catch (_) {
-          // 알림 권한/기기 설정 문제로 스케줄 저장이 실패하지 않도록 한다.
-        }
+        // try {
+        //   await NotificationService.scheduleMedicationReminder(
+        //     id: '$medicationId-$dayOffset-$time'.hashCode.abs(),
+        //     title: '복용 알림',
+        //     body:
+        //         '$mealLabel ${_mealTimingMessage(mealTimingLabel)} 약 복용하셨나요? ($medicationName)',
+        //     scheduledAt: scheduledAt,
+        //   );
+        // } catch (_) {
+        //   // 알림 권한/기기 설정 문제로 스케줄 저장이 실패하지 않도록 한다.
+        // }
       }
     }
   }

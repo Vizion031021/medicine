@@ -6,10 +6,10 @@ import 'package:sseudeuson/theme/app_colors.dart';
 import 'package:sseudeuson/screens/home_screen.dart';
 import 'package:sseudeuson/screens/bag_screen.dart';
 import 'package:sseudeuson/screens/calendar_screen.dart';
-import 'package:sseudeuson/screens/search_screen.dart';
+import 'package:sseudeuson/screens/compare_screen.dart';
 import 'package:sseudeuson/screens/auth/login_screen.dart';
 import 'package:sseudeuson/services/auth_service.dart';
-import 'package:sseudeuson/services/notification_service.dart';
+// import 'package:sseudeuson/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +23,7 @@ void main() async {
     url: SupabaseConfig.url,
     anonKey: SupabaseConfig.anonKey,
   );
-  await NotificationService.initialize();
+  // await NotificationService.initialize();
 
   runApp(const SseudeusOnApp());
 }
@@ -42,7 +42,8 @@ class SseudeusOnApp extends StatelessWidget {
           seedColor: AppColors.lavender,
           brightness: Brightness.light,
         ),
-        scaffoldBackgroundColor: AppColors.lavenderLight,
+        // ① 흰색 기본 배경
+        scaffoldBackgroundColor: Colors.white,
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
@@ -55,6 +56,7 @@ class SseudeusOnApp extends StatelessWidget {
             color: AppColors.textPrimary,
           ),
         ),
+        // ② 카드 배경 흰색, 테두리 라벤더
         cardTheme: CardThemeData(
           elevation: 0,
           color: Colors.white,
@@ -81,18 +83,22 @@ class SseudeusOnApp extends StatelessWidget {
           fillColor: AppColors.lavenderBg,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
+            borderSide:
+                const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
+            borderSide:
+                const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: AppColors.lavender, width: 1),
           ),
-          hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 12),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          hintStyle:
+              const TextStyle(color: AppColors.textHint, fontSize: 12),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
@@ -109,16 +115,13 @@ class SseudeusOnApp extends StatelessWidget {
           ),
         ),
       ),
-      // 로그인 여부에 따라 시작 화면 결정
       home: FutureBuilder<bool>(
         future: AuthService.isLoggedIn(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const _SplashScreen();
           }
-          if (snapshot.data == true) {
-            return const MainScaffold();
-          }
+          if (snapshot.data == true) return const MainScaffold();
           return const LoginScreen();
         },
       ),
@@ -126,7 +129,7 @@ class SseudeusOnApp extends StatelessWidget {
   }
 }
 
-// ─── 스플래시 화면 ────────────────────────────────────────────────────────────
+// ─── 스플래시 ─────────────────────────────────────────────────────────────────
 
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
@@ -134,16 +137,12 @@ class _SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: AppColors.lavenderLight,
+      backgroundColor: Colors.white,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.medication_rounded,
-              size: 60,
-              color: AppColors.lavender,
-            ),
+            Icon(Icons.medication_rounded, size: 60, color: AppColors.lavender),
             SizedBox(height: 16),
             Text(
               '쓰디슨',
@@ -160,7 +159,7 @@ class _SplashScreen extends StatelessWidget {
   }
 }
 
-// ─── 메인 스캐폴드 (하단 탭바) ─────────────────────────────────────────────
+// ─── 메인 스캐폴드 ────────────────────────────────────────────────────────────
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -171,24 +170,21 @@ class MainScaffold extends StatefulWidget {
 
 class _MainScaffoldState extends State<MainScaffold> {
   int _currentIndex = 0;
-  int _homeRefreshKey = 0;
-  int _bagRefreshKey = 0;
-  int _calendarRefreshKey = 0;
+  int _homeKey = 0;
+  int _bagKey = 0;
+  int _calKey = 0;
 
   List<Widget> get _screens => [
-        HomeScreen(key: ValueKey(_homeRefreshKey)),
-        BagScreen(key: ValueKey(_bagRefreshKey)),
-        CalendarScreen(key: ValueKey(_calendarRefreshKey)),
-        const SearchScreen(),
+        HomeScreen(key: ValueKey(_homeKey)),
+        BagScreen(key: ValueKey(_bagKey)),
+        CalendarScreen(key: ValueKey(_calKey)),
+        const CompareScreen(), // ③ 4번째 탭: 약 비교
       ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -198,7 +194,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(
-          top: BorderSide(color: Color(0xFFECE8F8), width: 0.5),
+          top: BorderSide(color: AppColors.cardBorder, width: 0.5),
         ),
       ),
       child: SafeArea(
@@ -213,7 +209,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                 isActive: _currentIndex == 0,
                 onTap: () => setState(() {
                   _currentIndex = 0;
-                  _homeRefreshKey++;
+                  _homeKey++;
                 }),
               ),
               _NavItem(
@@ -223,7 +219,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                 isActive: _currentIndex == 1,
                 onTap: () => setState(() {
                   _currentIndex = 1;
-                  _bagRefreshKey++;
+                  _bagKey++;
                 }),
               ),
               _NavItem(
@@ -233,13 +229,13 @@ class _MainScaffoldState extends State<MainScaffold> {
                 isActive: _currentIndex == 2,
                 onTap: () => setState(() {
                   _currentIndex = 2;
-                  _calendarRefreshKey++;
+                  _calKey++;
                 }),
               ),
               _NavItem(
-                icon: Icons.search_outlined,
-                activeIcon: Icons.search,
-                label: '검색',
+                icon: Icons.compare_arrows_outlined,
+                activeIcon: Icons.compare_arrows_rounded,
+                label: '약 비교', // ③ 탭 이름 변경
                 isActive: _currentIndex == 3,
                 onTap: () => setState(() => _currentIndex = 3),
               ),
@@ -272,7 +268,6 @@ class _NavItem extends StatelessWidget {
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

@@ -1,12 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sseudeuson/models/drug_info.dart';
-import 'package:sseudeuson/theme/app_colors.dart';
 import 'package:sseudeuson/models/medicine_model.dart';
 import 'package:sseudeuson/models/user_medication.dart';
 import 'package:sseudeuson/screens/bag_detail_screen.dart';
-import 'package:sseudeuson/screens/search_screen.dart';
+import 'package:sseudeuson/screens/drug_detail_screen.dart';
+import 'package:sseudeuson/services/bag_service.dart';
 import 'package:sseudeuson/services/drug_service.dart';
 import 'package:sseudeuson/services/medication_service.dart';
+import 'package:sseudeuson/theme/app_colors.dart';
 
 class BagScreen extends StatefulWidget {
   const BagScreen({super.key});
@@ -16,471 +18,472 @@ class BagScreen extends StatefulWidget {
 }
 
 class _BagScreenState extends State<BagScreen> {
-  late List<MedicineBag> _bags;
-  List<UserSchedule> _todaySchedules = [];
+  // ── 상태 ──────────────────────────────────────────────────────────────────
+  List<BagData> _bags = [];
+  List<UserMedication> _medications = [];
   List<DrugWarning> _bagWarnings = [];
-  final Set<String> _expandedBags = {};
+  Map<String, String> _assignments = {};
+  final Set<String> _expanded = {};
+
+  // ── 상단 검색 ────────────────────────────────────────────────────────────
+  final _searchCtrl = TextEditingController();
+  Timer? _debounce;
+  List<DrugInfo> _searchResults = [];
+  bool _isSearching = false;
+  bool _showSearch = false;
+
   bool _isLoading = true;
-  String? _errorMessage;
+  String? _errorMsg;
 
   @override
   void initState() {
     super.initState();
-    _bags = [];
-    _loadBags();
+    _load();
   }
 
-  Future<void> _loadBags() async {
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── 데이터 로드 ──────────────────────────────────────────────────────────
+
+  Future<void> _load() async {
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
+      _errorMsg = null;
     });
-
     try {
+      final bags = await BagService.getBags();
       final medications = await MedicationService.fetchMyMedications();
-      final now = DateTime.now();
-      final todaySchedules = await ScheduleService.fetchSchedules(
-        from: DateTime(now.year, now.month, now.day),
-        to: DateTime(now.year, now.month, now.day, 23, 59, 59),
-      );
-      final drugs = medications
-          .map((item) => item.drug)
-          .whereType<DrugInfo>()
-          .toList();
-      var bagWarnings = <DrugWarning>[];
-      if (drugs.length > 1) {
-        try {
-          bagWarnings = await DrugService.compareDrugs(drugs);
-        } catch (_) {
-          bagWarnings = [];
+      final assignments = await BagService.getAssignments();
+
+      // 봉투에 할당 안 된 약 → 기본 봉투로
+      for (final med in medications) {
+        if (!assignments.containsKey(med.id)) {
+          await BagService.assignMedication(med.id, 'default');
+          assignments[med.id] = 'default';
         }
       }
-      final medicines = medications.map((item) {
-        final drug = item.drug;
-        return Medicine(
-          id: item.id,
-          name: item.displayName,
-          englishName: drug?.company ?? '',
-          category: drug?.prescriptionType ?? '',
-          dosage: drug?.specification ?? '',
-          memo: item.instruction,
-          cautions: [
-            if (drug?.productCode.isNotEmpty == true) '제품코드: ${drug!.productCode}',
-            if (drug?.ingredientCode.isNotEmpty == true) '성분명코드: ${drug!.ingredientCode}',
-            if (drug?.atcCode.isNotEmpty == true) 'ATC 코드: ${drug!.atcCode}',
-          ],
-        );
-      }).toList();
+
+      final drugs = medications.map((m) => m.drug).whereType<DrugInfo>().toList();
+      List<DrugWarning> warnings = [];
+      if (drugs.length >= 2) {
+        try {
+          warnings = await DrugService.compareDrugs(drugs);
+        } catch (_) {}
+      }
 
       if (!mounted) return;
       setState(() {
-        _bags = [
-          MedicineBag(
-            id: 'supabase-bag',
-            name: '내 약봉투',
-            color: AppColors.lavender,
-            medicines: medicines,
-          ),
-        ];
-        _todaySchedules = todaySchedules;
-        _bagWarnings = bagWarnings;
-        _expandedBags.add('supabase-bag');
+        _bags = bags;
+        _medications = medications;
+        _assignments = assignments;
+        _bagWarnings = warnings;
+        if (_expanded.isEmpty && bags.isNotEmpty) _expanded.add(bags.first.id);
       });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _errorMessage = '약봉투 조회 실패: $error');
+    } catch (e) {
+      if (mounted) setState(() => _errorMsg = '약봉투 조회 실패: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  // ── 약물 검색 ─────────────────────────────────────────────────────────────
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    if (value.trim().isEmpty) {
+      setState(() => _searchResults = []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 350), () => _search(value));
+  }
+
+  Future<void> _search(String query) async {
+    setState(() => _isSearching = true);
+    try {
+      final results = await DrugService.searchDrugs(query, limit: 20);
+      if (mounted) setState(() => _searchResults = results);
+    } catch (_) {} finally {
+      if (mounted) setState(() => _isSearching = false);
+    }
+  }
+
+  // ── 봉투 추가 다이얼로그 ──────────────────────────────────────────────────
+
+  Future<void> _showAddBagDialog() async {
+    final nameCtrl = TextEditingController();
+    int colorIdx = 0;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setInner) => AlertDialog(
+          title: const Text('새 약봉투 만들기',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  hintText: '봉투 이름 입력 (예: 아침약, 혈압약)',
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                autofocus: true,
+              ),
+              const SizedBox(height: 14),
+              const Text('색상 선택',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: List.generate(AppColors.bagColors.length, (i) {
+                  final selected = colorIdx == i;
+                  return GestureDetector(
+                    onTap: () => setInner(() => colorIdx = i),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: AppColors.bagColors[i],
+                        shape: BoxShape.circle,
+                        border: selected
+                            ? Border.all(color: AppColors.textPrimary, width: 2)
+                            : null,
+                      ),
+                      child: selected
+                          ? const Icon(Icons.check, size: 16, color: Colors.white)
+                          : null,
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('취소', style: TextStyle(color: AppColors.textHint)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('만들기'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == true && nameCtrl.text.trim().isNotEmpty) {
+      await BagService.addBag(nameCtrl.text.trim(), colorIdx);
+      await _load();
+    }
+  }
+
+  // ── 약물을 봉투에 추가 ────────────────────────────────────────────────────
+
+  Future<void> _showBagPickerAndNavigate(DrugInfo drug) async {
+    if (_bags.isEmpty) return;
+
+    String? selectedBagId = _bags.first.id;
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setInner) => AlertDialog(
+          title: Text(
+            drug.name,
+            maxLines: 2,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('어느 약봉투에 추가할까요?',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(height: 10),
+              ..._bags.map((bag) {
+                return RadioListTile<String>(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: bag.id,
+                  groupValue: selectedBagId,
+                  onChanged: (v) => setInner(() => selectedBagId = v),
+                  title: Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: bag.color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Text(bag.name,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  activeColor: AppColors.lavender,
+                );
+              }),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('취소', style: TextStyle(color: AppColors.textHint)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, selectedBagId),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (picked == null || !mounted) return;
+
+    // 약 상세 화면으로 이동 (복용 설정 + 저장)
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DrugDetailScreen(drug: drug, targetBagId: picked),
+      ),
+    );
+
+    setState(() {
+      _searchCtrl.clear();
+      _searchResults = [];
+      _showSearch = false;
+    });
+    await _load();
+  }
+
+  // ── 약물 삭제 ─────────────────────────────────────────────────────────────
+
+  Future<void> _removeMedication(UserMedication med) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('약봉투에서 빼기'),
+        content: Text('${med.displayName}을(를) 약봉투에서 뺄까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('빼기', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await MedicationService.deactivateMedication(med.id);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${med.displayName} 삭제됨')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('삭제 실패: $e'), backgroundColor: AppColors.danger),
+        );
+      }
+    }
+  }
+
+  // ── 빌드 ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.lavenderLight,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '약봉투 관리',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            Text(
-              '복용중인 약 · 탭하여 상세 보기 · 부작용 자동 검사',
-              style: TextStyle(
-                fontSize: 10,
-                color: AppColors.textHint,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
+            Text('약봉투 관리',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary)),
+            Text('약봉투 · 약물 관리',
+                style: TextStyle(fontSize: 10, color: AppColors.textHint,
+                    fontWeight: FontWeight.w400)),
           ],
         ),
-        toolbarHeight: 58,
+        toolbarHeight: 56,
         actions: [
+          // 검색 토글
+          IconButton(
+            icon: Icon(
+              _showSearch ? Icons.search_off : Icons.search,
+              color: AppColors.lavender,
+            ),
+            tooltip: '약물 검색',
+            onPressed: () {
+              setState(() {
+                _showSearch = !_showSearch;
+                if (!_showSearch) {
+                  _searchCtrl.clear();
+                  _searchResults = [];
+                }
+              });
+            },
+          ),
+          // ⑤ + 버튼: 약봉투 추가
           IconButton(
             icon: const Icon(Icons.add, color: AppColors.lavender),
-            onPressed: _navigateToAdd,
+            tooltip: '새 약봉투 만들기',
+            onPressed: _showAddBagDialog,
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-          : _errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      _errorMessage!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.danger,
-                      ),
+      body: Column(
+        children: [
+          // ⑤ 상단 검색바 (약물 검색하여 봉투에 추가)
+          if (_showSearch) ...[
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchCtrl,
+                    onChanged: _onSearchChanged,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: '상품명, 업체명, 표준코드로 약물 검색',
+                      prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.lavender),
+                      suffixIcon: _isSearching
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ))
+                          : _searchCtrl.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.close, size: 16),
+                                  onPressed: () {
+                                    _searchCtrl.clear();
+                                    setState(() => _searchResults = []);
+                                  })
+                              : null,
                     ),
                   ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
-                  children: [
-                    _TodayStatusCard(
-                      schedules: _todaySchedules,
-                      onToggle: _toggleScheduleTaken,
-                    ),
-                    if (_bags.every((bag) => bag.medicines.isEmpty))
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.cardBorder,
-                            width: 0.5,
-                          ),
-                        ),
-                        child: const Text(
-                          '아직 저장된 약이 없습니다. 검색 탭에서 약을 찾아 약봉투에 추가해보세요.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textHint,
-                          ),
-                        ),
+                  if (_searchResults.isNotEmpty)
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      margin: const EdgeInsets.only(top: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.cardBorder, width: 0.5),
                       ),
-                    ..._bags.map(
-                      (bag) => _BagCard(
-                        bag: bag,
-                        warnings: _bagWarnings,
-                        isExpanded: _expandedBags.contains(bag.id),
-                        onToggle: () => setState(() {
-                          if (_expandedBags.contains(bag.id)) {
-                            _expandedBags.remove(bag.id);
-                          } else {
-                            _expandedBags.add(bag.id);
-                          }
-                        }),
-                        onMedicineTap: (medicine) =>
-                            _navigateToDetail(medicine),
-                        onMedicineDelete: _removeMedication,
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: _searchResults.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 0.5, indent: 14, endIndent: 14),
+                        itemBuilder: (ctx, i) {
+                          final drug = _searchResults[i];
+                          return ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                            title: Text(drug.name,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            subtitle: Text(
+                              '${drug.prescriptionType.isEmpty ? '' : '${drug.prescriptionType} · '}'
+                              '${drug.formType.isEmpty ? drug.company : drug.formType}',
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            trailing: const Icon(Icons.add_circle_outline,
+                                size: 20, color: AppColors.lavender),
+                            onTap: () => _showBagPickerAndNavigate(drug),
+                          );
+                        },
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    OutlinedButton.icon(
-                      onPressed: _navigateToAdd,
-                      icon: const Icon(
-                        Icons.search,
-                        size: 18,
-                        color: AppColors.lavender,
-                      ),
-                      label: const Text(
-                        '검색해서 약 추가',
-                        style: TextStyle(
-                          color: AppColors.lavender,
-                          fontSize: 12,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(
-                          color: AppColors.lavenderBorder,
-                          width: 1,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ],
-                ),
-    );
-  }
-
-  Future<void> _toggleScheduleTaken(UserSchedule schedule) async {
-    await ScheduleService.setTaken(
-      scheduleId: schedule.id,
-      isTaken: !schedule.isTaken,
-    );
-    await _loadBags();
-  }
-
-  void _navigateToAdd() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const SearchScreen(),
-      ),
-    ).then((_) => _loadBags());
-  }
-
-  void _navigateToDetail(Medicine medicine) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BagDetailScreen(medicine: medicine),
-      ),
-    );
-  }
-
-  Future<void> _removeMedication(Medicine medicine) async {
-    final shouldRemove = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('약봉투에서 빼기'),
-        content: Text('${medicine.name}을(를) 약봉투에서 뺄까요?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              '빼기',
-              style: TextStyle(color: AppColors.danger),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-    );
+            const Divider(height: 0.5, color: AppColors.cardBorder),
+          ],
 
-    if (shouldRemove != true) return;
-
-    try {
-      await MedicationService.deactivateMedication(medicine.id);
-      await _loadBags();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${medicine.name}을(를) 약봉투에서 뺐습니다.')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('약 삭제 실패: $error'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
-    }
-  }
-}
-
-class _TodayStatusCard extends StatelessWidget {
-  final List<UserSchedule> schedules;
-  final ValueChanged<UserSchedule> onToggle;
-
-  const _TodayStatusCard({
-    required this.schedules,
-    required this.onToggle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final doneCount = schedules.where((item) => item.isTaken).length;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.cardBorder, width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                '오늘 복용 확인',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Text(
-                '$doneCount / ${schedules.length} 복용',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.lavenderDark,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (schedules.isEmpty)
-            const Text(
-              '오늘 예정된 복용 일정이 없습니다.',
-              style: TextStyle(fontSize: 11, color: AppColors.textHint),
-            )
-          else
-            ...schedules.map((schedule) => _TodayScheduleRow(
-                  schedule: schedule,
-                  onToggle: () => onToggle(schedule),
-                )),
-        ],
-      ),
-    );
-  }
-}
-
-class _TodayScheduleRow extends StatelessWidget {
-  final UserSchedule schedule;
-  final VoidCallback onToggle;
-
-  const _TodayScheduleRow({
-    required this.schedule,
-    required this.onToggle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final medication = schedule.medication;
-    final mealLabel = _mealLabelFromTime(schedule.time);
-    final mealTiming = _mealTimingFromInstruction(medication?.instruction ?? '');
-    final timeText = _formatTime(schedule.time);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          _MealBadge(label: mealLabel, time: timeText),
-          const SizedBox(width: 10),
+          // ── 봉투 목록 ──────────────────────────────────────────────────────
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  medication?.displayName ?? '등록 약',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$mealLabel $mealTiming 복용',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.textHint,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          InkWell(
-            onTap: onToggle,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                color: schedule.isTaken ? AppColors.lavender : Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: schedule.isTaken
-                      ? AppColors.lavender
-                      : AppColors.lavenderBorder,
-                  width: 1.5,
-                ),
-              ),
-              child: schedule.isTaken
-                  ? const Icon(Icons.check, size: 14, color: Colors.white)
-                  : null,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _mealLabelFromTime(String time) {
-    final hour = int.tryParse(time.split(':').first) ?? 9;
-    if (hour < 11) return '아침';
-    if (hour < 16) return '점심';
-    return '저녁';
-  }
-
-  String _mealTimingFromInstruction(String instruction) {
-    if (instruction.contains('식전')) return '식전';
-    if (instruction.contains('식후')) return '식후';
-    return '예정';
-  }
-
-  String _formatTime(String time) {
-    final parts = time.split(':');
-    final hour = parts.isNotEmpty ? parts[0].padLeft(2, '0') : '09';
-    final minute = parts.length > 1 ? parts[1].padLeft(2, '0') : '00';
-    return '$hour:$minute';
-  }
-}
-
-class _MealBadge extends StatelessWidget {
-  final String label;
-  final String time;
-
-  const _MealBadge({required this.label, required this.time});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (label) {
-      '아침' => const Color(0xFFEF9F27),
-      '점심' => AppColors.lavender,
-      _ => const Color(0xFF4A6FA5),
-    };
-
-    return Container(
-      width: 54,
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.28), width: 0.8),
-      ),
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: color,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 1),
-          Text(
-            time,
-            style: const TextStyle(
-              fontSize: 9,
-              color: AppColors.textHint,
-              fontWeight: FontWeight.w600,
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                : _errorMsg != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(_errorMsg!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+                        ))
+                    : RefreshIndicator(
+                        onRefresh: _load,
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
+                          children: [
+                            ..._bags.map((bag) {
+                              final meds = _medications
+                                  .where((m) =>
+                                      (_assignments[m.id] ?? 'default') == bag.id)
+                                  .toList();
+                              final bagWarnings = _bagWarnings.isNotEmpty && meds.length >= 2
+                                  ? _bagWarnings
+                                  : <DrugWarning>[];
+                              return _BagCard(
+                                bag: bag,
+                                medications: meds,
+                                warnings: bagWarnings,
+                                isExpanded: _expanded.contains(bag.id),
+                                onToggle: () => setState(() {
+                                  if (_expanded.contains(bag.id)) {
+                                    _expanded.remove(bag.id);
+                                  } else {
+                                    _expanded.add(bag.id);
+                                  }
+                                }),
+                                onMedTap: (med) {
+                                  // 약물 상세(복용방법)으로 이동
+                                  final drug = med.drug;
+                                  if (drug == null) return;
+                                  // legacy BagDetailScreen으로 연결 (추후 DrugDetailScreen으로 통일 가능)
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => DrugDetailScreen(drug: drug),
+                                    ),
+                                  ).then((_) => _load());
+                                },
+                                onMedDelete: _removeMedication,
+                                onBagDelete: bag.id == 'default'
+                                    ? null
+                                    : () async {
+                                        await BagService.removeBag(bag.id);
+                                        await _load();
+                                      },
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
           ),
         ],
       ),
@@ -491,20 +494,24 @@ class _MealBadge extends StatelessWidget {
 // ─── 약봉투 카드 ─────────────────────────────────────────────────────────────
 
 class _BagCard extends StatelessWidget {
-  final MedicineBag bag;
+  final BagData bag;
+  final List<UserMedication> medications;
   final List<DrugWarning> warnings;
   final bool isExpanded;
   final VoidCallback onToggle;
-  final ValueChanged<Medicine> onMedicineTap;
-  final ValueChanged<Medicine> onMedicineDelete;
+  final ValueChanged<UserMedication> onMedTap;
+  final ValueChanged<UserMedication> onMedDelete;
+  final VoidCallback? onBagDelete;
 
   const _BagCard({
     required this.bag,
+    required this.medications,
     required this.warnings,
     required this.isExpanded,
     required this.onToggle,
-    required this.onMedicineTap,
-    required this.onMedicineDelete,
+    required this.onMedTap,
+    required this.onMedDelete,
+    this.onBagDelete,
   });
 
   @override
@@ -518,7 +525,7 @@ class _BagCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // 헤더 (탭하여 펼침/접힘)
+          // ── 헤더 ────────────────────────────────────────────────────────
           InkWell(
             onTap: onToggle,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
@@ -526,163 +533,115 @@ class _BagCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(
                 children: [
-                  // 봉투 색상 점
                   Container(
                     width: 10,
                     height: 10,
-                    decoration: BoxDecoration(
-                      color: bag.color,
-                      shape: BoxShape.circle,
-                    ),
+                    decoration: BoxDecoration(color: bag.color, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 10),
-                  // 봉투 이름
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          bag.name,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          '약물 ${bag.medicines.length}종',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: AppColors.textHint,
-                          ),
-                        ),
+                        Text(bag.name,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary)),
+                        Text('약물 ${medications.length}종',
+                            style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
                       ],
                     ),
                   ),
                   // 상태 배지
                   _StatusBadge(hasWarning: warnings.isNotEmpty),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
+                  // 삭제 버튼 (기본 봉투 제외)
+                  if (onBagDelete != null)
+                    GestureDetector(
+                      onTap: onBagDelete,
+                      child: const Icon(Icons.delete_outline, size: 16, color: AppColors.textHint),
+                    ),
+                  const SizedBox(width: 4),
                   AnimatedRotation(
                     turns: isExpanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
-                    child: const Icon(
-                      Icons.keyboard_arrow_down,
-                      color: AppColors.textHint,
-                      size: 20,
-                    ),
+                    child: const Icon(Icons.keyboard_arrow_down,
+                        color: AppColors.textHint, size: 20),
                   ),
                 ],
               ),
             ),
           ),
-          // 펼쳐진 내용
+
+          // ── 펼쳐진 내용 ──────────────────────────────────────────────────
           if (isExpanded) ...[
-            const Divider(height: 0.5, color: AppColors.divider),
+            const Divider(height: 0.5, color: AppColors.cardBorder),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '아래 약을 탭하면 상호작용·주의사항·부작용을 확인할 수 있어요',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: AppColors.textHint,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // 약물 칩들
-                  Wrap(
-                    spacing: 5,
-                    runSpacing: 5,
-                    children: bag.medicines.map((med) {
-                      return Container(
-                        padding: const EdgeInsets.only(
-                          left: 10,
-                          right: 4,
-                          top: 4,
-                          bottom: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.lavenderBg,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            InkWell(
-                              onTap: () => onMedicineTap(med),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 2,
-                                ),
+                  if (medications.isEmpty)
+                    const Text('이 봉투에 아직 약이 없습니다. 상단 검색으로 추가하세요.',
+                        style: TextStyle(fontSize: 10, color: AppColors.textHint))
+                  else ...[
+                    const Text('탭하면 약품 상세·복용 설정을 볼 수 있어요',
+                        style: TextStyle(fontSize: 10, color: AppColors.textHint)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 5,
+                      children: medications.map((med) {
+                        return Container(
+                          padding: const EdgeInsets.only(left: 10, right: 4, top: 4, bottom: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.lavenderBg,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InkWell(
+                                onTap: () => onMedTap(med),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(
-                                      med.name,
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.lavenderDark,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 3),
-                                    const Icon(
-                                      Icons.chevron_right,
-                                      size: 12,
-                                      color: AppColors.lavenderDark,
-                                    ),
+                                    Text(med.displayName,
+                                        style: const TextStyle(
+                                            fontSize: 11, color: AppColors.lavenderDark)),
+                                    const Icon(Icons.chevron_right,
+                                        size: 12, color: AppColors.lavenderDark),
                                   ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 2),
-                            InkWell(
-                              onTap: () => onMedicineDelete(med),
-                              borderRadius: BorderRadius.circular(8),
-                              child: const Padding(
-                                padding: EdgeInsets.all(2),
-                                child: Icon(
-                                  Icons.close,
-                                  size: 13,
-                                  color: AppColors.textHint,
-                                ),
+                              const SizedBox(width: 2),
+                              InkWell(
+                                onTap: () => onMedDelete(med),
+                                child: const Icon(Icons.close, size: 13, color: AppColors.textHint),
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                  // ── 경고 스트립 ──────────────────────────────────────────
                   if (warnings.isNotEmpty) ...[
                     const SizedBox(height: 10),
-                    ...warnings.take(4).map(
-                          (warning) => _WarningStrip(warning: warning),
-                        ),
-                  ] else ...[
+                    ...warnings.take(3).map((w) => _WarningStrip(warning: w)),
+                  ] else if (medications.length >= 2) ...[
                     const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: AppColors.successBg,
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: const Row(
                         children: [
-                          Icon(Icons.check_circle_outline,
-                              color: AppColors.success, size: 13),
+                          Icon(Icons.check_circle_outline, color: AppColors.success, size: 13),
                           SizedBox(width: 5),
-                          Text(
-                            '현재 DB 기준 확인된 병용 금기 정보 없음',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Color(0xFF2E7D32),
-                            ),
-                          ),
+                          Text('현재 DB 기준 확인된 병용 금기 없음',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32))),
                         ],
                       ),
                     ),
@@ -699,7 +658,6 @@ class _BagCard extends StatelessWidget {
 
 class _WarningStrip extends StatelessWidget {
   final DrugWarning warning;
-
   const _WarningStrip({required this.warning});
 
   @override
@@ -707,7 +665,6 @@ class _WarningStrip extends StatelessWidget {
     final isHigh = warning.isHighRisk;
     final color = isHigh ? AppColors.danger : AppColors.warning;
     final bg = isHigh ? AppColors.dangerBg : AppColors.warningBg;
-
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 6),
@@ -715,37 +672,23 @@ class _WarningStrip extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.2), width: 0.5),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            isHigh ? Icons.dangerous_outlined : Icons.warning_amber_rounded,
-            color: color,
-            size: 14,
-          ),
+          Icon(isHigh ? Icons.dangerous_outlined : Icons.warning_amber_rounded,
+              color: color, size: 14),
           const SizedBox(width: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${warning.title} · 위험도 ${warning.severity}',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  warning.message,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.textSecondary,
-                    height: 1.45,
-                  ),
-                ),
+                Text('${warning.title} · 위험도 ${warning.severity}',
+                    style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(warning.message,
+                    style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, height: 1.45)),
               ],
             ),
           ),
@@ -754,8 +697,6 @@ class _WarningStrip extends StatelessWidget {
     );
   }
 }
-
-// ─── 상태 배지 ───────────────────────────────────────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
   final bool hasWarning;
@@ -773,9 +714,7 @@ class _StatusBadge extends StatelessWidget {
         hasWarning ? '⚠ 주의' : '✓ 확인',
         style: TextStyle(
           fontSize: 10,
-          color: hasWarning
-              ? const Color(0xFF854F0B)
-              : const Color(0xFF2E7D32),
+          color: hasWarning ? const Color(0xFF854F0B) : const Color(0xFF2E7D32),
           fontWeight: FontWeight.w600,
         ),
       ),

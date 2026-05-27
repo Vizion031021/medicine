@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sseudeuson/models/drug_info.dart';
+import 'package:sseudeuson/services/bag_service.dart';
 import 'package:sseudeuson/services/drug_service.dart';
 import 'package:sseudeuson/services/medication_service.dart';
 import 'package:sseudeuson/theme/app_colors.dart';
@@ -7,7 +8,11 @@ import 'package:sseudeuson/theme/app_colors.dart';
 class DrugDetailScreen extends StatefulWidget {
   final DrugInfo drug;
 
-  const DrugDetailScreen({super.key, required this.drug});
+  /// 약봉투 화면에서 넘어올 때 어느 봉투에 넣을지 지정.
+  /// null 이면 기본 봉투('default')에 할당.
+  final String? targetBagId;
+
+  const DrugDetailScreen({super.key, required this.drug, this.targetBagId});
 
   @override
   State<DrugDetailScreen> createState() => _DrugDetailScreenState();
@@ -37,7 +42,7 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
   Widget build(BuildContext context) {
     final drug = widget.drug;
     return Scaffold(
-      backgroundColor: AppColors.lavenderLight,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -65,6 +70,7 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
         children: [
+          // ── 기본 정보 ──────────────────────────────────────────────────
           _SectionCard(
             icon: Icons.medication_outlined,
             iconColor: AppColors.lavender,
@@ -84,6 +90,8 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
               ],
             ),
           ),
+
+          // ── 성분 ──────────────────────────────────────────────────────
           _SectionCard(
             icon: Icons.science_outlined,
             iconColor: AppColors.success,
@@ -91,11 +99,10 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
             child: FutureBuilder<String>(
               future: _ingredientNameFuture,
               builder: (context, snapshot) {
-                final ingredientName = snapshot.data ?? '';
-                final label = ingredientName.isNotEmpty
-                    ? '$ingredientName (${drug.ingredientCode})'
+                final name = snapshot.data ?? '';
+                final label = name.isNotEmpty
+                    ? '$name (${drug.ingredientCode})'
                     : drug.ingredientLabel;
-
                 return Text(
                   label,
                   style: const TextStyle(
@@ -107,6 +114,8 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
               },
             ),
           ),
+
+          // ── 주의 정보 ──────────────────────────────────────────────────
           FutureBuilder<List<DrugWarning>>(
             future: _warningsFuture,
             builder: (context, snapshot) {
@@ -123,7 +132,6 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                   ),
                 );
               }
-
               if (snapshot.hasError) {
                 return _SectionCard(
                   icon: Icons.error_outline,
@@ -131,11 +139,11 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                   title: '주의 정보',
                   child: Text(
                     '주의 정보 조회 실패: ${snapshot.error}',
-                    style: const TextStyle(fontSize: 11, color: AppColors.danger),
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.danger),
                   ),
                 );
               }
-
               final warnings = snapshot.data ?? [];
               if (warnings.isEmpty) {
                 return _SectionCard(
@@ -143,29 +151,30 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                   iconColor: AppColors.success,
                   title: '주의 정보',
                   child: Text(
-                    '제품코드 ${drug.displayCode.isEmpty ? '- ' : drug.displayCode} / 성분코드 ${drug.ingredientCode.isEmpty ? '- ' : drug.ingredientCode} 기준으로 조회된 주요 주의 정보가 없습니다.',
+                    '제품코드 ${drug.displayCode.isEmpty ? '-' : drug.displayCode} /'
+                        ' 성분코드 ${drug.ingredientCode.isEmpty ? '-' : drug.ingredientCode}'
+                        ' 기준으로 조회된 주요 주의 정보가 없습니다.',
                     style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textHint,
-                      height: 1.5,
-                    ),
+                        fontSize: 11, color: AppColors.textHint, height: 1.5),
                   ),
                 );
               }
-
               return _SectionCard(
                 icon: Icons.warning_amber_rounded,
                 iconColor: AppColors.warning,
                 title: '주의 정보 ${warnings.length}건',
                 child: Column(
                   children: warnings
-                      .map((warning) => _WarningTile(warning: warning))
+                      .map((w) => _WarningTile(warning: w))
                       .toList(),
                 ),
               );
             },
           ),
+
           const SizedBox(height: 8),
+
+          // ── 복용 설정 ──────────────────────────────────────────────────
           _SectionCard(
             icon: Icons.schedule_outlined,
             iconColor: AppColors.lavender,
@@ -173,14 +182,8 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  '복용 시간대',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+                // 시간대
+                const _SettingLabel('복용 시간대'),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
@@ -201,61 +204,43 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                     );
                   }).toList(),
                 ),
+
                 const SizedBox(height: 12),
-                const Text(
-                  '복용 기준',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+
+                // 식전/식후
+                const _SettingLabel('복용 기준'),
                 const SizedBox(height: 8),
                 Row(
-                  children: _MealTiming.values.map((timing) {
+                  children: _MealTiming.values.map((t) {
                     return Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: _ChoiceChip(
-                        label: timing.label,
-                        isSelected: _mealTiming == timing,
-                        onTap: () => setState(() => _mealTiming = timing),
+                        label: t.label,
+                        isSelected: _mealTiming == t,
+                        onTap: () => setState(() => _mealTiming = t),
                       ),
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  _selectedSlots
-                      .map((slot) => '${slot.label} ${slot.timeText}')
-                      .join(' · '),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.textHint,
-                  ),
-                ),
+
                 const SizedBox(height: 14),
-                const Text(
-                  '복용 기간',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+
+                // 복용 기간
+                const _SettingLabel('복용 기간'),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: const [
-                    _DurationPreset(days: 3, label: '3일'),
-                    _DurationPreset(days: 7, label: '7일'),
-                    _DurationPreset(days: 14, label: '14일'),
-                    _DurationPreset(days: 30, label: '한달'),
-                  ].map((preset) {
+                    _DPreset(days: 3, label: '3일'),
+                    _DPreset(days: 7, label: '7일'),
+                    _DPreset(days: 14, label: '14일'),
+                    _DPreset(days: 30, label: '한달'),
+                  ].map((p) {
                     return _ChoiceChip(
-                      label: preset.label,
-                      isSelected: _selectedPresetDays == preset.days,
-                      onTap: () => _applyPreset(preset.days),
+                      label: p.label,
+                      isSelected: _selectedPresetDays == p.days,
+                      onTap: () => _applyPreset(p.days),
                     );
                   }).toList(),
                 ),
@@ -265,43 +250,87 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                     Expanded(
                       child: _DateButton(
                         label: '시작',
-                        value: _formatDate(_startDate),
-                        onTap: () => _pickStartDate(),
+                        value: _fmtDate(_startDate),
+                        onTap: _pickStart,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: _DateButton(
                         label: '종료',
-                        value: _formatDate(_endDate),
-                        onTap: () => _pickEndDate(),
+                        value: _fmtDate(_endDate),
+                        onTap: _pickEnd,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '캘린더에는 ${_formatDate(_startDate)}부터 ${_formatDate(_endDate)}까지만 복용 일정이 생성됩니다.',
+                  '${_fmtDate(_startDate)}부터 ${_fmtDate(_endDate)}까지 복용 일정이 생성됩니다.',
                   style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.textHint,
-                    height: 1.4,
-                  ),
+                      fontSize: 10, color: AppColors.textHint, height: 1.4),
                 ),
+
+                // 선택된 봉투 표시
+                if (widget.targetBagId != null) ...[
+                  const SizedBox(height: 10),
+                  FutureBuilder<List<BagData>>(
+                    future: BagService.getBags(),
+                    builder: (ctx, snap) {
+                      final bags = snap.data ?? [];
+                      final bag = bags.firstWhere(
+                            (b) => b.id == widget.targetBagId,
+                        orElse: () =>
+                            BagData(id: 'default', name: '내 약봉투'),
+                      );
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: AppColors.lavenderBg,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: AppColors.lavenderBorder, width: 0.5),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                  color: bag.color,
+                                  shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '저장 위치: ${bag.name}',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.lavenderDark),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ],
             ),
           ),
+
           const SizedBox(height: 8),
+
+          // ── 약봉투에 추가 버튼 ─────────────────────────────────────────
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _isSaving ? null : _addToBag,
               icon: _isSaving
                   ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.add, size: 16),
               label: Text(_isSaving ? '저장 중' : '내 약봉투에 추가'),
             ),
@@ -311,35 +340,66 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     );
   }
 
+  // ── 약봉투에 추가 + 캘린더 생성 여부 묻기 ────────────────────────────────
+
   Future<void> _addToBag() async {
     setState(() => _isSaving = true);
     try {
       final slots = _selectedSlots.toList()
         ..sort((a, b) => a.hour.compareTo(b.hour));
-      final timeLabels = slots.map((slot) => slot.label).join(', ');
       final instruction =
-          '$timeLabels ${_mealTiming.label} 복용 · ${_formatDate(_startDate)}~${_formatDate(_endDate)}';
-      await MedicationService.addMedication(
+          '${slots.map((s) => s.label).join(', ')} ${_mealTiming.label} 복용 · '
+          '${_fmtDate(_startDate)}~${_fmtDate(_endDate)}';
+
+      final medication = await MedicationService.addMedication(
         drug: widget.drug,
         instruction: instruction,
         durationDays: _durationDays,
         startDate: _startDate,
         endDate: _endDate,
-        scheduleTimes: slots.map((slot) => slot.scheduleTime).toList(),
+        scheduleTimes: slots.map((s) => s.scheduleTime).toList(),
         mealTimingLabel: _mealTiming.label,
       );
+
+      // 봉투 할당
+      final bagId = widget.targetBagId ?? 'default';
+      await BagService.assignMedication(medication.id, bagId);
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('내 약봉투에 저장했습니다.'),
-          backgroundColor: AppColors.lavender,
-        ),
-      );
-    } catch (error) {
+
+      // ── 캘린더 생성 여부 다이얼로그 ────────────────────────────────────
+      final createCalendar = await _showCalendarDialog();
+
+      if (!mounted) return;
+
+      if (createCalendar == true) {
+        // 이미 MedicationService.addMedication에서 user_schedules를 생성함
+        // 캘린더 탭으로 안내 스낵바
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${widget.drug.name} 복용 일정이 캘린더에 추가되었습니다.\n'
+                  '${_fmtDate(_startDate)} ~ ${_fmtDate(_endDate)}',
+            ),
+            backgroundColor: AppColors.lavender,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('내 약봉투에 저장했습니다.'),
+            backgroundColor: AppColors.lavender,
+          ),
+        );
+      }
+
+      Navigator.pop(context);
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('약봉투 저장 실패: $error'),
+          content: Text('약봉투 저장 실패: $e'),
           backgroundColor: AppColors.danger,
         ),
       );
@@ -348,20 +408,119 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     }
   }
 
+  // ── 캘린더 생성 여부 다이얼로그 ──────────────────────────────────────────
+
+  Future<bool?> _showCalendarDialog() {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.calendar_month_outlined,
+                color: AppColors.lavender, size: 22),
+            SizedBox(width: 8),
+            Text(
+              '캘린더에 추가할까요?',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.drug.name,
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.lavenderBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DialogInfoRow(
+                    icon: Icons.date_range_outlined,
+                    text:
+                    '${_fmtDate(_startDate)}  ~  ${_fmtDate(_endDate)}',
+                  ),
+                  const SizedBox(height: 4),
+                  _DialogInfoRow(
+                    icon: Icons.schedule_outlined,
+                    text: _selectedSlots
+                        .map((s) => '${s.label} ${s.timeText}')
+                        .join(' · '),
+                  ),
+                  const SizedBox(height: 4),
+                  _DialogInfoRow(
+                    icon: Icons.restaurant_outlined,
+                    text: _mealTiming.label,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              '복용 기간에 맞춘 캘린더 일정이 생성됩니다.',
+              style: TextStyle(fontSize: 11, color: AppColors.textHint),
+            ),
+          ],
+        ),
+        actionsPadding:
+        const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: AppColors.lavenderBorder),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 10),
+            ),
+            child: const Text('건너뛰기',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.calendar_month_outlined, size: 16),
+            label: const Text('캘린더에 추가'),
+            style: ElevatedButton.styleFrom(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 날짜 유틸 ─────────────────────────────────────────────────────────────
+
   int get _durationDays => _endDate.difference(_startDate).inDays + 1;
 
   void _applyPreset(int days) {
     setState(() {
       _selectedPresetDays = days;
       _endDate = DateTime(
-        _startDate.year,
-        _startDate.month,
-        _startDate.day + days - 1,
-      );
+          _startDate.year, _startDate.month, _startDate.day + days - 1);
     });
   }
 
-  Future<void> _pickStartDate() async {
+  Future<void> _pickStart() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _startDate,
@@ -370,22 +529,18 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     );
     if (picked == null) return;
     setState(() {
-      final presetDays = _selectedPresetDays;
       _startDate = DateTime(picked.year, picked.month, picked.day);
-      if (presetDays > 0) {
-        _endDate = DateTime(
-          _startDate.year,
-          _startDate.month,
-          _startDate.day + presetDays - 1,
-        );
+      if (_selectedPresetDays > 0) {
+        _endDate = DateTime(_startDate.year, _startDate.month,
+            _startDate.day + _selectedPresetDays - 1);
       } else if (_endDate.isBefore(_startDate)) {
         _endDate = _startDate;
       }
-      _selectedPresetDays = _matchingPresetDays;
+      _selectedPresetDays = _matchPreset;
     });
   }
 
-  Future<void> _pickEndDate() async {
+  Future<void> _pickEnd() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _endDate.isBefore(_startDate) ? _startDate : _endDate,
@@ -395,82 +550,104 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     if (picked == null) return;
     setState(() {
       _endDate = DateTime(picked.year, picked.month, picked.day);
-      _selectedPresetDays = _matchingPresetDays;
+      _selectedPresetDays = _matchPreset;
     });
   }
 
-  int get _matchingPresetDays {
-    final days = _durationDays;
-    return const [3, 7, 14, 30].contains(days) ? days : 0;
-  }
+  int get _matchPreset =>
+      const [3, 7, 14, 30].contains(_durationDays) ? _durationDays : 0;
 
-  String _formatDate(DateTime date) =>
-      '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
+  String _fmtDate(DateTime d) =>
+      '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
 }
 
-class _DurationPreset {
+// ─── 다이얼로그 정보 행 ───────────────────────────────────────────────────────
+
+class _DialogInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _DialogInfoRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 13, color: AppColors.lavender),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+                fontSize: 11, color: AppColors.lavenderDark),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── 내부 데이터 클래스 ───────────────────────────────────────────────────────
+
+class _DPreset {
   final int days;
   final String label;
-
-  const _DurationPreset({required this.days, required this.label});
+  const _DPreset({required this.days, required this.label});
 }
 
 enum _MealSlot {
-  breakfast,
-  lunch,
-  dinner;
+  breakfast, lunch, dinner;
 
   String get label {
     switch (this) {
-      case _MealSlot.breakfast:
-        return '아침';
-      case _MealSlot.lunch:
-        return '점심';
-      case _MealSlot.dinner:
-        return '저녁';
+      case _MealSlot.breakfast: return '아침';
+      case _MealSlot.lunch:     return '점심';
+      case _MealSlot.dinner:    return '저녁';
     }
   }
 
   int get hour {
     switch (this) {
-      case _MealSlot.breakfast:
-        return 9;
-      case _MealSlot.lunch:
-        return 12;
-      case _MealSlot.dinner:
-        return 18;
+      case _MealSlot.breakfast: return 9;
+      case _MealSlot.lunch:     return 12;
+      case _MealSlot.dinner:    return 18;
     }
   }
 
-  String get timeText => '${hour.toString().padLeft(2, '0')}:00';
-
+  String get timeText     => '${hour.toString().padLeft(2, '0')}:00';
   String get scheduleTime => '${hour.toString().padLeft(2, '0')}:00:00';
 }
 
 enum _MealTiming {
-  before,
-  after;
+  before, after;
 
   String get label {
     switch (this) {
-      case _MealTiming.before:
-        return '식전';
-      case _MealTiming.after:
-        return '식후';
+      case _MealTiming.before: return '식전';
+      case _MealTiming.after:  return '식후';
     }
   }
+}
+
+// ─── 공통 위젯 ────────────────────────────────────────────────────────────────
+
+class _SettingLabel extends StatelessWidget {
+  final String text;
+  const _SettingLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) => Text(text,
+      style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary));
 }
 
 class _ChoiceChip extends StatelessWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
-
-  const _ChoiceChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
+  const _ChoiceChip(
+      {required this.label, required this.isSelected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -484,7 +661,8 @@ class _ChoiceChip extends StatelessWidget {
           color: isSelected ? AppColors.lavender : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isSelected ? AppColors.lavender : AppColors.lavenderBorder,
+            color:
+            isSelected ? AppColors.lavender : AppColors.lavenderBorder,
             width: 0.7,
           ),
         ),
@@ -505,12 +683,8 @@ class _DateButton extends StatelessWidget {
   final String label;
   final String value;
   final VoidCallback onTap;
-
-  const _DateButton({
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
+  const _DateButton(
+      {required this.label, required this.value, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -526,29 +700,20 @@ class _DateButton extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 10,
-                color: AppColors.textHint,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textHint,
+                    fontWeight: FontWeight.w600)),
             const Spacer(),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.lavenderDark,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.lavenderDark,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(width: 4),
-            const Icon(
-              Icons.calendar_today_outlined,
-              size: 13,
-              color: AppColors.lavender,
-            ),
+            const Icon(Icons.calendar_today_outlined,
+                size: 13, color: AppColors.lavender),
           ],
         ),
       ),
@@ -561,13 +726,11 @@ class _SectionCard extends StatelessWidget {
   final Color iconColor;
   final String title;
   final Widget child;
-
-  const _SectionCard({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.child,
-  });
+  const _SectionCard(
+      {required this.icon,
+        required this.iconColor,
+        required this.title,
+        required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -582,22 +745,17 @@ class _SectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 15, color: iconColor),
-              const SizedBox(width: 6),
-              Text(
-                title,
+          Row(children: [
+            Icon(icon, size: 15, color: iconColor),
+            const SizedBox(width: 6),
+            Text(title,
                 style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary)),
+          ]),
           const SizedBox(height: 10),
-          const Divider(height: 0.5, color: AppColors.divider),
+          const Divider(height: 0.5, color: AppColors.cardBorder),
           const SizedBox(height: 10),
           child,
         ],
@@ -609,7 +767,6 @@ class _SectionCard extends StatelessWidget {
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
-
   const _InfoRow({required this.label, required this.value});
 
   @override
@@ -621,20 +778,16 @@ class _InfoRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 92,
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 11, color: AppColors.textHint),
-            ),
+            child: Text(label,
+                style: const TextStyle(
+                    fontSize: 11, color: AppColors.textHint)),
           ),
           Expanded(
-            child: Text(
-              value.isEmpty ? '-' : value,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textPrimary,
-                height: 1.4,
-              ),
-            ),
+            child: Text(value.isEmpty ? '-' : value,
+                style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textPrimary,
+                    height: 1.4)),
           ),
         ],
       ),
@@ -644,52 +797,40 @@ class _InfoRow extends StatelessWidget {
 
 class _WarningTile extends StatelessWidget {
   final DrugWarning warning;
-
   const _WarningTile({required this.warning});
 
   @override
   Widget build(BuildContext context) {
     final color = warning.isHighRisk ? AppColors.danger : AppColors.warning;
-    final bg = warning.isHighRisk ? AppColors.dangerBg : AppColors.warningBg;
+    final bg =
+    warning.isHighRisk ? AppColors.dangerBg : AppColors.warningBg;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration:
+      BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, size: 14, color: color),
-              const SizedBox(width: 5),
-              Text(
-                warning.title,
+          Row(children: [
+            Icon(Icons.warning_amber_rounded, size: 14, color: color),
+            const SizedBox(width: 5),
+            Text(warning.title,
                 style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                warning.severity,
-                style: TextStyle(fontSize: 10, color: color),
-              ),
-            ],
-          ),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: color)),
+            const Spacer(),
+            Text(warning.severity,
+                style: TextStyle(fontSize: 10, color: color)),
+          ]),
           const SizedBox(height: 6),
-          Text(
-            warning.message,
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.textPrimary,
-              height: 1.5,
-            ),
-          ),
+          Text(warning.message,
+              style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textPrimary,
+                  height: 1.5)),
         ],
       ),
     );
