@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sseudeuson/config/supabase_config.dart';
 import 'package:sseudeuson/theme/app_colors.dart';
 import 'package:sseudeuson/screens/home_screen.dart';
 import 'package:sseudeuson/screens/bag_screen.dart';
@@ -6,9 +9,22 @@ import 'package:sseudeuson/screens/calendar_screen.dart';
 import 'package:sseudeuson/screens/search_screen.dart';
 import 'package:sseudeuson/screens/auth/login_screen.dart';
 import 'package:sseudeuson/services/auth_service.dart';
+import 'package:sseudeuson/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
+
+  if (SupabaseConfig.anonKey.isEmpty) {
+    throw StateError('SUPABASE_ANON_KEY is not set.');
+  }
+
+  await Supabase.initialize(
+    url: SupabaseConfig.url,
+    anonKey: SupabaseConfig.anonKey,
+  );
+  await NotificationService.initialize();
+
   runApp(const SseudeusOnApp());
 }
 
@@ -155,13 +171,16 @@ class MainScaffold extends StatefulWidget {
 
 class _MainScaffoldState extends State<MainScaffold> {
   int _currentIndex = 0;
+  int _homeRefreshKey = 0;
+  int _bagRefreshKey = 0;
+  int _calendarRefreshKey = 0;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    BagScreen(),
-    CalendarScreen(),
-    SearchScreen(),
-  ];
+  List<Widget> get _screens => [
+        HomeScreen(key: ValueKey(_homeRefreshKey)),
+        BagScreen(key: ValueKey(_bagRefreshKey)),
+        CalendarScreen(key: ValueKey(_calendarRefreshKey)),
+        const SearchScreen(),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -192,21 +211,30 @@ class _MainScaffoldState extends State<MainScaffold> {
                 activeIcon: Icons.home_rounded,
                 label: '홈',
                 isActive: _currentIndex == 0,
-                onTap: () => setState(() => _currentIndex = 0),
+                onTap: () => setState(() {
+                  _currentIndex = 0;
+                  _homeRefreshKey++;
+                }),
               ),
               _NavItem(
                 icon: Icons.medication_outlined,
                 activeIcon: Icons.medication_rounded,
                 label: '약봉투',
                 isActive: _currentIndex == 1,
-                onTap: () => setState(() => _currentIndex = 1),
+                onTap: () => setState(() {
+                  _currentIndex = 1;
+                  _bagRefreshKey++;
+                }),
               ),
               _NavItem(
                 icon: Icons.calendar_today_outlined,
                 activeIcon: Icons.calendar_today,
                 label: '캘린더',
                 isActive: _currentIndex == 2,
-                onTap: () => setState(() => _currentIndex = 2),
+                onTap: () => setState(() {
+                  _currentIndex = 2;
+                  _calendarRefreshKey++;
+                }),
               ),
               _NavItem(
                 icon: Icons.search_outlined,

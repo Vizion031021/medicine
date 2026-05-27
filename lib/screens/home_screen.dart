@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sseudeuson/theme/app_colors.dart';
-import 'package:sseudeuson/models/medicine_model.dart';
-import 'package:sseudeuson/widgets/interaction_badge.dart';
 import 'package:sseudeuson/services/auth_service.dart';
+import 'package:sseudeuson/services/medication_service.dart';
 import 'package:sseudeuson/screens/auth/login_screen.dart';
 
 // 시간대 구분
@@ -62,21 +61,15 @@ extension DayPeriodExt on DayPeriod {
   }
 }
 
-// 더미 오늘의 복약 일정
-const _todaySchedule = [
-  _ScheduleItem(num: 1, name: '타이레놀정 500mg', time: '오전 8:00', detail: '아침 식후', done: true),
-  _ScheduleItem(num: 2, name: '메트포르민 500mg', time: '오전 8:00', detail: '아침 식후 30분', done: true),
-  _ScheduleItem(num: 3, name: '글리메피리드 2mg', time: '오후 1:00', detail: '점심 식전 15분', done: false),
-  _ScheduleItem(num: 4, name: '암로디핀 5mg', time: '오후 7:00', detail: '저녁 식후', done: false),
-];
-
 class _ScheduleItem {
+  final String? scheduleId;
   final int num;
   final String name;
   final String time;
   final String detail;
   final bool done;
   const _ScheduleItem({
+    this.scheduleId,
     required this.num,
     required this.name,
     required this.time,
@@ -97,17 +90,47 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   DayPeriod _period = DayPeriod.morning;
   String _nickname = '사용자';
+  List<_ScheduleItem> _todaySchedules = [];
 
   @override
   void initState() {
     super.initState();
     _period = _detectCurrentPeriod();
     _loadNickname();
+    _loadTodaySchedules();
   }
 
   Future<void> _loadNickname() async {
     final nickname = await AuthService.getNickname();
     if (mounted) setState(() => _nickname = nickname);
+  }
+
+  Future<void> _loadTodaySchedules() async {
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month, now.day);
+    final to = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    try {
+      final schedules = await ScheduleService.fetchSchedules(from: from, to: to);
+      if (!mounted) return;
+      setState(() {
+        _todaySchedules = List.generate(schedules.length, (index) {
+          final schedule = schedules[index];
+          return _ScheduleItem(
+            scheduleId: schedule.id,
+            num: index + 1,
+            name: schedule.medication?.displayName ?? '등록 약',
+            time: schedule.time,
+            detail: schedule.medication?.instruction.isNotEmpty == true
+                ? schedule.medication!.instruction
+                : '복용 예정',
+            done: schedule.isTaken,
+          );
+        });
+      });
+    } catch (_) {
+      // 홈은 발표 안정성을 위해 조회 실패 시 빈 상태를 유지한다.
+    }
   }
 
   DayPeriod _detectCurrentPeriod() {
@@ -132,8 +155,6 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildTodaySchedule(),
               const SizedBox(height: 6),
               Container(height: 6, color: AppColors.lavenderBg),
-              const SizedBox(height: 10),
-              _buildRecentInteractions(),
               const SizedBox(height: 80),
             ],
           ),
@@ -267,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── 오늘의 복약 일정 ──
 
   Widget _buildTodaySchedule() {
-    final doneCount = _todaySchedule.where((s) => s.done).length;
+    final doneCount = _todaySchedules.where((s) => s.done).length;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(
@@ -285,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               Text(
-                '$doneCount / ${_todaySchedule.length} 복용',
+                '$doneCount / ${_todaySchedules.length} 복용',
                 style: const TextStyle(
                   fontSize: 11,
                   color: AppColors.lavenderDark,
@@ -301,91 +322,34 @@ class _HomeScreenState extends State<HomeScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.cardBorder, width: 0.5),
             ),
-            child: Column(
-              children: List.generate(_todaySchedule.length, (i) {
-                return _ScheduleRow(
-                  item: _todaySchedule[i],
-                  isLast: i == _todaySchedule.length - 1,
-                );
-              }),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── 최근 상호작용 ──
-
-  Widget _buildRecentInteractions() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '최근 확인한 상호작용',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.cardBorder, width: 0.5),
-            ),
-            child: Column(
-              children: [
-                _InteractionRow(
-                  drug1: '메트포르민',
-                  drug2: '글리메피리드',
-                  severity: InteractionSeverity.warning,
-                  isLast: false,
-                ),
-                _InteractionRow(
-                  drug1: '암로디핀',
-                  drug2: '에날라프릴',
-                  severity: InteractionSeverity.safe,
-                  isLast: true,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          // 경고 배너
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.dangerBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.warning_amber_rounded,
-                    color: AppColors.danger, size: 16),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    '저혈당 위험   메트포르민 + 글리메피리드 병용 시 주의. 식사와 함께 복용하고 혈당을 모니터링하세요.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFFC62828),
-                      height: 1.5,
+            child: _todaySchedules.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(
+                      child: Text(
+                        '오늘 예정된 복용 일정이 없습니다.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textHint,
+                        ),
+                      ),
                     ),
+                  )
+                : Column(
+                    children: List.generate(_todaySchedules.length, (i) {
+                      return _ScheduleRow(
+                        item: _todaySchedules[i],
+                        isLast: i == _todaySchedules.length - 1,
+                        onChanged: _loadTodaySchedules,
+                      );
+                    }),
                   ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
     );
   }
+
 }
 
 // ─── 복약 일정 행 ───────────────────────────────────────────────────────────
@@ -393,7 +357,13 @@ class _HomeScreenState extends State<HomeScreen> {
 class _ScheduleRow extends StatefulWidget {
   final _ScheduleItem item;
   final bool isLast;
-  const _ScheduleRow({required this.item, required this.isLast});
+  final VoidCallback? onChanged;
+
+  const _ScheduleRow({
+    required this.item,
+    required this.isLast,
+    this.onChanged,
+  });
 
   @override
   State<_ScheduleRow> createState() => _ScheduleRowState();
@@ -410,33 +380,17 @@ class _ScheduleRowState extends State<_ScheduleRow> {
 
   @override
   Widget build(BuildContext context) {
+    final mealLabel = _mealLabelFromTime(widget.item.time);
+    final mealTiming = _mealTimingFromDetail(widget.item.detail);
+    final timeText = _formatTime(widget.item.time);
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
-              // 번호 원
-              Container(
-                width: 24,
-                height: 24,
-                decoration: const BoxDecoration(
-                  color: AppColors.lavenderBg,
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    '${widget.item.num}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.lavenderDark,
-                    ),
-                  ),
-                ),
-              ),
+              _MealBadge(label: mealLabel, time: timeText),
               const SizedBox(width: 10),
-              // 약 정보
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -455,11 +409,14 @@ class _ScheduleRowState extends State<_ScheduleRow> {
                         const Icon(Icons.access_time,
                             size: 11, color: AppColors.textHint),
                         const SizedBox(width: 3),
-                        Text(
-                          '${widget.item.time} · ${widget.item.detail}',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: AppColors.textHint,
+                        Expanded(
+                          child: Text(
+                            '$mealLabel $mealTiming 복용',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.textHint,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -469,7 +426,18 @@ class _ScheduleRowState extends State<_ScheduleRow> {
               ),
               // 체크 버튼
               GestureDetector(
-                onTap: () => setState(() => _done = !_done),
+                onTap: () async {
+                  final next = !_done;
+                  setState(() => _done = next);
+                  final scheduleId = widget.item.scheduleId;
+                  if (scheduleId != null) {
+                    await ScheduleService.setTaken(
+                      scheduleId: scheduleId,
+                      isTaken: next,
+                    );
+                    widget.onChanged?.call();
+                  }
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   width: 24,
@@ -502,77 +470,70 @@ class _ScheduleRowState extends State<_ScheduleRow> {
       ],
     );
   }
-}
 
-// ─── 상호작용 행 ─────────────────────────────────────────────────────────────
+  String _mealLabelFromTime(String time) {
+    final hour = int.tryParse(time.split(':').first) ?? 9;
+    if (hour < 11) return '아침';
+    if (hour < 16) return '점심';
+    return '저녁';
+  }
 
-class _InteractionRow extends StatelessWidget {
-  final String drug1;
-  final String drug2;
-  final InteractionSeverity severity;
-  final bool isLast;
+  String _mealTimingFromDetail(String detail) {
+    if (detail.contains('식전')) return '식전';
+    if (detail.contains('식후')) return '식후';
+    return '예정';
+  }
 
-  const _InteractionRow({
-    required this.drug1,
-    required this.drug2,
-    required this.severity,
-    required this.isLast,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          child: Row(
-            children: [
-              InteractionBadge(severity: severity),
-              const SizedBox(width: 8),
-              _DrugChip(label: drug1),
-              const SizedBox(width: 5),
-              Text(
-                severity == InteractionSeverity.safe ? '+' : '✕',
-                style: TextStyle(
-                  color: severity == InteractionSeverity.safe
-                      ? AppColors.success
-                      : AppColors.danger,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(width: 5),
-              _DrugChip(label: drug2),
-            ],
-          ),
-        ),
-        if (!isLast)
-          const Divider(
-            height: 0.5,
-            color: AppColors.divider,
-            indent: 14,
-            endIndent: 14,
-          ),
-      ],
-    );
+  String _formatTime(String time) {
+    final parts = time.split(':');
+    final hour = parts.isNotEmpty ? parts[0].padLeft(2, '0') : '09';
+    final minute = parts.length > 1 ? parts[1].padLeft(2, '0') : '00';
+    return '$hour:$minute';
   }
 }
 
-class _DrugChip extends StatelessWidget {
+class _MealBadge extends StatelessWidget {
   final String label;
-  const _DrugChip({required this.label});
+  final String time;
+
+  const _MealBadge({required this.label, required this.time});
 
   @override
   Widget build(BuildContext context) {
+    final color = switch (label) {
+      '아침' => const Color(0xFFEF9F27),
+      '점심' => AppColors.lavender,
+      _ => const Color(0xFF4A6FA5),
+    };
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      width: 54,
+      padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.lavenderBg,
-        borderRadius: BorderRadius.circular(8),
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.28), width: 0.8),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 10, color: AppColors.lavenderDark),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 1),
+          Text(
+            time,
+            style: const TextStyle(
+              fontSize: 9,
+              color: AppColors.textHint,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
