@@ -67,14 +67,11 @@ class _SearchScreenState extends State<SearchScreen> {
             .toList();
       } else {
         _selectedForCompare = [..._selectedForCompare, drug];
-        if (_selectedForCompare.length > 2) {
-          _selectedForCompare = _selectedForCompare.sublist(1);
-        }
       }
       _compareWarnings = [];
     });
 
-    if (_selectedForCompare.length == 2) {
+    if (_selectedForCompare.length >= 2) {
       setState(() => _isComparing = true);
       try {
         final warnings = await DrugService.compareDrugs(_selectedForCompare);
@@ -251,7 +248,7 @@ class _SearchScreenState extends State<SearchScreen> {
             const Padding(
               padding: EdgeInsets.only(top: 5),
               child: Text(
-                '비교할 약을 하나 더 선택하세요.',
+                '비교할 약을 하나 이상 더 선택하세요.',
                 style: TextStyle(fontSize: 10, color: AppColors.textHint),
               ),
             ),
@@ -260,12 +257,12 @@ class _SearchScreenState extends State<SearchScreen> {
               padding: EdgeInsets.only(top: 6),
               child: LinearProgressIndicator(minHeight: 2),
             ),
-          if (_selectedForCompare.length == 2 && !_isComparing)
+          if (_selectedForCompare.length >= 2 && !_isComparing)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 _compareWarnings.isEmpty
-                    ? 'DB에서 확인된 병용금기/효능군 중복 정보가 없습니다.'
+                    ? '선택한 약들 사이에서 DB 기준 확인된 병용금기/성분중복/효능군 중복 정보가 없습니다.'
                     : _compareWarnings.map((warning) => warning.message).join('\n'),
                 style: TextStyle(
                   fontSize: 10,
