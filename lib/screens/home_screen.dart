@@ -65,14 +65,13 @@ class _StarPoint {
 
 class _ScheduleItem {
   final String? scheduleId;
-  final int num;
   final String name;
   final String time;
   final String detail;
   final bool done;
   const _ScheduleItem({
     this.scheduleId,
-    required this.num, required this.name,
+    required this.name,
     required this.time, required this.detail,
     required this.done,
   });
@@ -219,7 +218,6 @@ class _HomeScreenState extends State<HomeScreen>
           final s = schedules[i];
           return _ScheduleItem(
             scheduleId: s.id,
-            num: i + 1,
             name: s.medication?.displayName ?? '등록 약',
             time: s.time,
             detail: s.medication?.instruction.isNotEmpty == true

@@ -419,11 +419,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            if (hasTaken) _statusDot(AppColors.success, isSelected),
-                            if (hasMissed) _statusDot(AppColors.danger, isSelected),
+                            if (hasTaken) _statusDot(AppColors.success),
+                            if (hasMissed) _statusDot(AppColors.danger),
                             if (hasMemo) _statusDot(
                               isSelected ? Colors.white.withOpacity(0.8) : AppColors.lavender,
-                              isSelected,
                             ),
                           ],
                         ),
@@ -452,7 +451,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _statusDot(Color color, bool isSelected) {
+  Widget _statusDot(Color color) {
     return Container(
       width: 5, height: 5,
       margin: const EdgeInsets.symmetric(horizontal: 1),
