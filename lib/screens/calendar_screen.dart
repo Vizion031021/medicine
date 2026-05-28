@@ -98,6 +98,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
   List<UserSchedule> _schedulesFor(DateTime day) => _schedulesByDay[_dayKey(day)] ?? [];
   List<String> _memosFor(DateTime day) => _memosByDay[_dayKey(day)] ?? [];
   DateTime _dayKey(DateTime d) => DateTime(d.year, d.month, d.day);
+  bool _canEditTaken(UserSchedule schedule) {
+    final today = _dayKey(DateTime.now());
+    final scheduleDay = _dayKey(schedule.date);
+    return !scheduleDay.isAfter(today);
+  }
+
+  String _mealLabel(String time) {
+    final hour = int.tryParse(time.split(':').first) ?? 9;
+    if (hour < 11) return '아침';
+    if (hour < 16) return '점심';
+    return '저녁';
+  }
+
+  Color _mealColor(String meal) {
+    switch (meal) {
+      case '아침':
+        return const Color(0xFFEF9F27);
+      case '점심':
+        return AppColors.lavender;
+      default:
+        return const Color(0xFF4A6FA5);
+    }
+  }
 
   String _fmtDate(DateTime? d) {
     if (d == null) return '날짜 선택';
@@ -159,38 +182,62 @@ class _CalendarScreenState extends State<CalendarScreen> {
         child: Column(
           children: [
             _buildHeader(),
-            // 필터 활성화 → 날짜 스트립 / 비활성화 → 전체 달력
-            if (_isFilterActive)
-              _buildFilteredDateStrip()
-            else ...[
-              Container(
-                color: Colors.white,
-                child: Column(children: [_buildCalendar(), _buildLegend()]),
-              ),
-            ],
-            const Divider(height: 0.5, color: AppColors.cardBorder),
             Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                  : _errorMessage != null
-                      ? Center(child: Padding(padding: const EdgeInsets.all(24),
-                          child: Text(_errorMessage!, textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 12, color: AppColors.danger))))
-                      : RefreshIndicator(
-                          onRefresh: _loadMonth,
-                          child: ListView(
-                            padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
-                            children: [
-                              _buildDayHeader(),
-                              const SizedBox(height: 8),
-                              ..._buildScheduleCards(),
-                              ..._buildMemoCards(),
-                              const SizedBox(height: 8),
-                              _buildMemoButton(),
-                              if (_showMemoInput) _buildMemoInput(),
-                            ],
+              child: RefreshIndicator(
+                onRefresh: _loadMonth,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.only(bottom: 80),
+                  children: [
+                    // 필터 활성화 → 날짜 스트립 / 비활성화 → 전체 달력
+                    if (_isFilterActive)
+                      _buildFilteredDateStrip()
+                    else
+                      Container(
+                        color: Colors.white,
+                        child: Column(
+                          children: [_buildCalendar(), _buildLegend()],
+                        ),
+                      ),
+                    const Divider(height: 0.5, color: AppColors.cardBorder),
+                    if (_isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 48),
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.danger,
                           ),
                         ),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildDayHeader(),
+                            const SizedBox(height: 8),
+                            ..._buildScheduleCards(),
+                            ..._buildMemoCards(),
+                            const SizedBox(height: 8),
+                            _buildMemoButton(),
+                            if (_showMemoInput) _buildMemoInput(),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -537,26 +584,103 @@ class _CalendarScreenState extends State<CalendarScreen> {
       )];
     }
 
-    return schedules.map((s) {
-      final med = s.medication;
-      final drug = med?.drug;
-      final name = med?.displayName ?? '등록 약';
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.cardBorder, width: 0.5),
+    final mealOrder = ['아침', '점심', '저녁'];
+    return mealOrder.map((meal) {
+      final items = schedules.where((s) => _mealLabel(s.time) == meal).toList()
+        ..sort((a, b) => a.time.compareTo(b.time));
+      return _buildScheduleMealSection(meal, items);
+    }).toList();
+  }
+
+  Widget _buildScheduleMealSection(String meal, List<UserSchedule> schedules) {
+    final color = _mealColor(meal);
+    final done = schedules.where((s) => s.isTaken).length;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.cardBorder, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  meal,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '$done/${schedules.length}',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textHint,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (schedules.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  '예정된 복약 일정이 없습니다.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textHint),
+                ),
+              )
+            else
+              Column(
+                children: List.generate(schedules.length, (i) {
+                  return _buildScheduleTile(
+                    schedules[i],
+                    isLast: i == schedules.length - 1,
+                    color: color,
+                  );
+                }),
+              ),
+          ],
         ),
-        child: Row(
+      ),
+    );
+  }
+
+  Widget _buildScheduleTile(
+    UserSchedule schedule, {
+    required bool isLast,
+    required Color color,
+  }) {
+    final med = schedule.medication;
+    final drug = med?.drug;
+    final name = med?.displayName ?? '등록 약';
+    final canEditTaken = _canEditTaken(schedule);
+
+    return Column(
+      children: [
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 8, height: 8,
-              margin: const EdgeInsets.only(top: 4),
+              width: 6,
+              height: 6,
+              margin: const EdgeInsets.only(top: 6),
               decoration: BoxDecoration(
-                color: s.isTaken ? AppColors.success : AppColors.danger,
+                color: schedule.isTaken ? AppColors.success : AppColors.danger,
                 shape: BoxShape.circle,
               ),
             ),
@@ -565,34 +689,55 @@ class _CalendarScreenState extends State<CalendarScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
                   const SizedBox(height: 3),
                   Text(
-                    [s.time, if (drug?.company.isNotEmpty == true) drug!.company].join(' · '),
+                    [schedule.time, if (drug?.company.isNotEmpty == true) drug!.company].join(' · '),
                     style: const TextStyle(fontSize: 10, color: AppColors.textHint),
                   ),
                   if (med?.instruction.isNotEmpty == true) ...[
                     const SizedBox(height: 5),
-                    Text(med!.instruction,
-                      style: const TextStyle(fontSize: 10, color: AppColors.lavenderDark)),
+                    Text(
+                      med!.instruction,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, color: color),
+                    ),
                   ],
                 ],
               ),
             ),
             TextButton(
-              onPressed: () => _toggleTaken(s),
+              onPressed: canEditTaken ? () => _toggleTaken(schedule) : null,
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 minimumSize: Size.zero,
               ),
-              child: Text(s.isTaken ? '취소' : '복용',
-                style: TextStyle(fontSize: 11,
-                  color: s.isTaken ? AppColors.textHint : AppColors.lavender)),
+              child: Text(
+                canEditTaken ? (schedule.isTaken ? '취소' : '복용') : '예정',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: canEditTaken
+                      ? (schedule.isTaken ? AppColors.textHint : AppColors.lavender)
+                      : AppColors.textHint,
+                ),
+              ),
             ),
           ],
         ),
-      );
-    }).toList();
+        if (!isLast)
+          const Divider(height: 18, color: AppColors.cardBorder),
+      ],
+    );
   }
 
   List<Widget> _buildMemoCards() {
@@ -847,6 +992,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
   // ─── 액션 ────────────────────────────────────────────────────────────────
 
   Future<void> _toggleTaken(UserSchedule schedule) async {
+    if (!_canEditTaken(schedule)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('미래 복용 일정은 당일이 되면 체크할 수 있습니다.')),
+      );
+      return;
+    }
     await ScheduleService.setTaken(scheduleId: schedule.id, isTaken: !schedule.isTaken);
     await _loadMonth();
   }

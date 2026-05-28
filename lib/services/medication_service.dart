@@ -86,6 +86,48 @@ class MedicationService {
     return medication;
   }
 
+  static Future<void> updateMedicationSettings({
+    required UserMedication medication,
+    required String customName,
+    required String instruction,
+    required int durationDays,
+    required DateTime startDate,
+    required DateTime endDate,
+    required List<String> scheduleTimes,
+    required String mealTimingLabel,
+  }) async {
+    final userId = await AuthService.getCurrentUserId();
+    if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
+
+    await _client
+        .from('user_medications')
+        .update({
+          'custom_name': customName,
+          'instruction': instruction,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', medication.id)
+        .eq('user_id', userId);
+
+    final now = DateTime.now().toIso8601String();
+    await _client
+        .from('user_schedules')
+        .update({'deleted_at': now})
+        .eq('user_medication_id', medication.id)
+        .eq('user_id', userId)
+        .isFilter('deleted_at', null);
+
+    await _createDefaultSchedules(
+      userId: userId,
+      medicationId: medication.id,
+      durationDays: durationDays,
+      startDate: startDate,
+      endDate: endDate,
+      scheduleTimes: scheduleTimes,
+      mealTimingLabel: mealTimingLabel,
+    );
+  }
+
   static Future<void> _createDefaultSchedules({
     required String userId,
     required String medicationId,

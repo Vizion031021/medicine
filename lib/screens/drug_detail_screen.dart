@@ -371,7 +371,7 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     );
   }
 
-  // ── 약봉투에 추가 + 캘린더 생성 여부 묻기 ────────────────────────────────
+  // ── 약봉투에 추가 + 캘린더 자동 생성 ────────────────────────────────────
 
   Future<void> _addToBag() async {
     setState(() => _isSaving = true);
@@ -401,32 +401,16 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
 
       if (!mounted) return;
 
-      // ── 캘린더 생성 여부 다이얼로그 ────────────────────────────────────
-      final createCalendar = await _showCalendarDialog();
-
-      if (!mounted) return;
-
-      if (createCalendar == true) {
-        // 이미 MedicationService.addMedication에서 user_schedules를 생성함
-        // 캘린더 탭으로 안내 스낵바
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${widget.drug.name} 복용 일정이 캘린더에 추가되었습니다.\n'
-                  '${_fmtDate(_startDate)} ~ ${_fmtDate(_endDate)}',
-            ),
-            backgroundColor: AppColors.lavender,
-            duration: const Duration(seconds: 3),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${widget.drug.name}을(를) 약봉투와 캘린더에 저장했습니다.\n'
+                '${_fmtDate(_startDate)} ~ ${_fmtDate(_endDate)}',
           ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('내 약봉투에 저장했습니다.'),
-            backgroundColor: AppColors.lavender,
-          ),
-        );
-      }
+          backgroundColor: AppColors.lavender,
+          duration: const Duration(seconds: 3),
+        ),
+      );
 
       Navigator.pop(context);
     } catch (e) {
@@ -440,106 +424,6 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
-  }
-
-  // ── 캘린더 생성 여부 다이얼로그 ──────────────────────────────────────────
-
-  Future<bool?> _showCalendarDialog() {
-    return showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.calendar_month_outlined,
-                color: AppColors.lavender, size: 22),
-            SizedBox(width: 8),
-            Text(
-              '캘린더에 추가할까요?',
-              style: TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.drug.name,
-              style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.lavenderBg,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _DialogInfoRow(
-                    icon: Icons.date_range_outlined,
-                    text:
-                    '${_fmtDate(_startDate)}  ~  ${_fmtDate(_endDate)}',
-                  ),
-                  const SizedBox(height: 4),
-                  _DialogInfoRow(
-                    icon: Icons.schedule_outlined,
-                    text: _selectedSlots
-                        .map((s) => '${s.label} ${s.timeText}')
-                        .join(' · '),
-                  ),
-                  const SizedBox(height: 4),
-                  _DialogInfoRow(
-                    icon: Icons.restaurant_outlined,
-                    text: _mealTiming.label,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              '복용 기간에 맞춘 캘린더 일정이 생성됩니다.',
-              style: TextStyle(fontSize: 11, color: AppColors.textHint),
-            ),
-          ],
-        ),
-        actionsPadding:
-        const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.lavenderBorder),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 10),
-            ),
-            child: const Text('건너뛰기',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton.icon(
-            onPressed: () => Navigator.pop(ctx, true),
-            icon: const Icon(Icons.calendar_month_outlined, size: 16),
-            label: const Text('캘린더에 추가'),
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 10),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   // ── 날짜 유틸 ─────────────────────────────────────────────────────────────
@@ -593,31 +477,6 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
 
   String _fmtDate(DateTime d) =>
       '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
-}
-
-// ─── 다이얼로그 정보 행 ───────────────────────────────────────────────────────
-
-class _DialogInfoRow extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _DialogInfoRow({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 13, color: AppColors.lavender),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-                fontSize: 11, color: AppColors.lavenderDark),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 // ─── 내부 데이터 클래스 ───────────────────────────────────────────────────────
