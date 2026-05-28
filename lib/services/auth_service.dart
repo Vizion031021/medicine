@@ -40,12 +40,8 @@ class AuthService {
     if (loginId.isEmpty || password.isEmpty || userName.isEmpty) {
       return '모든 항목을 입력해주세요.';
     }
-    if (password.length < 4) {
-      return '데모 비밀번호는 4자 이상 입력해주세요.';
-    }
-    if (userName.length < 2) {
-      return '닉네임은 2자 이상이어야 합니다.';
-    }
+    if (password.length < 4) return '데모 비밀번호는 4자 이상 입력해주세요.';
+    if (userName.length < 2) return '닉네임은 2자 이상이어야 합니다.';
 
     try {
       final existing = await _client
@@ -54,9 +50,7 @@ class AuthService {
           .eq('login_id', loginId)
           .maybeSingle();
 
-      if (existing != null) {
-        return '이미 가입된 아이디입니다.';
-      }
+      if (existing != null) return '이미 가입된 아이디입니다.';
 
       final inserted = await _client
           .from('user_info')
@@ -72,7 +66,7 @@ class AuthService {
       return null;
     } on PostgrestException catch (error) {
       return '회원가입 실패: ${error.message}';
-    } catch (error) {
+    } catch (_) {
       return '회원가입 중 오류가 발생했습니다.';
     }
   }
@@ -94,15 +88,13 @@ class AuthService {
           .eq('password', password)
           .maybeSingle();
 
-      if (user == null) {
-        return '아이디 또는 비밀번호가 올바르지 않습니다.';
-      }
+      if (user == null) return '아이디 또는 비밀번호가 올바르지 않습니다.';
 
       await _saveSession(Map<String, dynamic>.from(user));
       return null;
     } on PostgrestException catch (error) {
       return '로그인 실패: ${error.message}';
-    } catch (error) {
+    } catch (_) {
       return '로그인 중 오류가 발생했습니다.';
     }
   }
@@ -117,7 +109,6 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString(_keyUserId);
     await prefs.setString(_keyNickname, nickname);
-
     if (userId != null) {
       await _client
           .from('user_info')

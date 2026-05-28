@@ -50,13 +50,19 @@ class DrugService {
     final ingredientCode = drug.ingredientCode;
 
     final results = await Future.wait<List<DrugWarning>>([
-      _safeWarnings(() => _fetchDosageWarnings(productCode, ingredientCode)),
-      _safeWarnings(() => _fetchDurationWarnings(productCode, ingredientCode)),
+      _safeWarnings(
+        () => _fetchDosageWarnings(drug, productCode, ingredientCode),
+      ),
+      _safeWarnings(
+        () => _fetchDurationWarnings(drug, productCode, ingredientCode),
+      ),
       _safeWarnings(() => _fetchEfficacyDupWarnings(productCode, ingredientCode)),
-      _safeWarnings(() => _fetchPregnancyWarnings(productCode, ingredientCode)),
+      _safeWarnings(
+        () => _fetchPregnancyWarnings(drug, productCode, ingredientCode),
+      ),
     ]);
 
-    return results.expand((items) => items).toList();
+    return _dedupeWarnings(results.expand((items) => items).toList());
   }
 
   static Future<List<DrugWarning>> _safeWarnings(
@@ -196,9 +202,7 @@ class DrugService {
           groups.putIfAbsent(group, () => []).add(row);
           groupIngredientCodes.putIfAbsent(group, () => {}).add(ingredientCode);
         }
-      } catch (_) {
-        // 효능군 중복 조회가 실패해도 병용 금기/성분 중복 결과는 유지한다.
-      }
+      } catch (_) {}
     }
 
     for (final entry in groups.entries) {
@@ -249,7 +253,9 @@ class DrugService {
     return name
         .replaceAll(RegExp(r'\([^)]*\)'), '')
         .replaceAll(RegExp(r'[0-9]+(\.[0-9]+)?'), '')
-        .replaceAll(RegExp(r'(밀리그램|마이크로그램|그램|mg|㎎|g|ml|mL|%)', caseSensitive: false), '')
+        .replaceAll(RegExp(
+            r'(밀리그램|마이크로그램|그램|mg|㎎|g|ml|mL|%)',
+            caseSensitive: false), '')
         .replaceAll(RegExp(r'(연질캡슐|서방정|장용정|캡슐|시럽|현탁액|주사|정|액|주)$'), '')
         .replaceAll(RegExp(r'[\s·ㆍ\-_]'), '')
         .trim();
@@ -261,10 +267,8 @@ class DrugService {
   }) async {
     final rows = <Map<String, dynamic>>[];
     final querySpecs = <MapEntry<String, List<String>>>[
-      if (productCodes.isNotEmpty)
-        MapEntry('제품코드1', productCodes.toList()),
-      if (productCodes.isNotEmpty)
-        MapEntry('제품코드2', productCodes.toList()),
+      if (productCodes.isNotEmpty) MapEntry('제품코드1', productCodes.toList()),
+      if (productCodes.isNotEmpty) MapEntry('제품코드2', productCodes.toList()),
       if (ingredientCodes.isNotEmpty)
         MapEntry('성분코드1', ingredientCodes.toList()),
       if (ingredientCodes.isNotEmpty)
@@ -303,6 +307,7 @@ class DrugService {
   }
 
   static Future<List<DrugWarning>> _fetchDosageWarnings(
+    DrugInfo drug,
     String productCode,
     String ingredientCode,
   ) async {
@@ -317,7 +322,7 @@ class DrugService {
       return DrugWarning(
         type: DrugWarningType.dosage,
         title: '용량 주의',
-        message: '${row['제품명'] ?? row['성분명'] ?? '해당 약'} 1일 최대 투여량: $maxDose',
+        message: '${drug.name} 1일 최대 투여량: $maxDose',
         severity: '중간',
         raw: row,
       );
@@ -325,6 +330,7 @@ class DrugService {
   }
 
   static Future<List<DrugWarning>> _fetchDurationWarnings(
+    DrugInfo drug,
     String productCode,
     String ingredientCode,
   ) async {
@@ -339,7 +345,7 @@ class DrugService {
         type: DrugWarningType.duration,
         title: '투여기간 주의',
         message:
-            '${row['제품명'] ?? row['성분명'] ?? '해당 약'} 최대 투여기간: ${row['최대투여기간일수'] ?? '-'}일',
+            '${drug.name} 최대 투여기간: ${row['최대투여기간일수'] ?? '-'}일',
         severity: '중간',
         raw: row,
       );
@@ -368,6 +374,7 @@ class DrugService {
   }
 
   static Future<List<DrugWarning>> _fetchPregnancyWarnings(
+    DrugInfo drug,
     String productCode,
     String ingredientCode,
   ) async {
@@ -382,7 +389,7 @@ class DrugService {
         type: DrugWarningType.pregnancy,
         title: '임부 금기',
         message:
-            '${row['제품명'] ?? row['성분명'] ?? '해당 약'} 금기등급: ${row['금기등급'] ?? '-'} / ${row['상세정보'] ?? ''}',
+            '${drug.name} 금기등급: ${row['금기등급'] ?? '-'} / ${row['상세정보'] ?? ''}',
         severity: '높음',
         raw: row,
       );
@@ -400,10 +407,68 @@ class DrugService {
     if (productCode.isNotEmpty) filters.add('제품코드.eq.$productCode');
     if (ingredientCode.isNotEmpty) filters.add('성분코드.eq.$ingredientCode');
 
-    final rows = await _client.from(table).select().or(filters.join(',')).limit(20);
+    final rows =
+        await _client.from(table).select().or(filters.join(',')).limit(20);
     return (rows as List)
         .map((row) => Map<String, dynamic>.from(row as Map))
         .toList();
+  }
+
+  // ─── 중복 제거 ────────────────────────────────────────────────────────────
+
+  static List<DrugWarning> _dedupeWarnings(List<DrugWarning> warnings) {
+    final result = <DrugWarning>[];
+    final seen = <String>{};
+
+    for (final warning in warnings) {
+      final key = _warningKey(warning);
+      if (!seen.add(key)) continue;
+      result.add(warning);
+    }
+
+    return result;
+  }
+
+  static String _warningKey(DrugWarning warning) {
+    final row = warning.raw;
+    switch (warning.type) {
+      case DrugWarningType.dosage:
+        return [
+          warning.type.name,
+          row['성분코드'],
+          row['성분명'],
+          row['1일최대투여량'],
+          row['1일최대 투여기준량'],
+          row['점검기준 성분함량(총함량)'],
+        ].join('|');
+      case DrugWarningType.duration:
+        return [
+          warning.type.name,
+          row['성분코드'],
+          row['성분명'],
+          row['최대투여기간일수'],
+        ].join('|');
+      case DrugWarningType.efficacyDuplication:
+        return [
+          warning.type.name,
+          row['효능군'],
+          row['그룹구분'],
+          row['일반명코드'],
+          row['성분코드'],
+          row['성분명'],
+        ].join('|');
+      case DrugWarningType.pregnancy:
+        return [
+          warning.type.name,
+          row['성분코드'],
+          row['성분명'],
+          row['금기등급'],
+          row['상세정보'],
+        ].join('|');
+      case DrugWarningType.comboContraindication:
+      case DrugWarningType.ingredientDuplication:
+        return '${warning.type.name}|${warning.title}|${warning.message}';
+    }
   }
 
   static Future<String> fetchIngredientName(DrugInfo drug) async {

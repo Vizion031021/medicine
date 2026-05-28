@@ -45,10 +45,7 @@ class DrugInfo {
       name: value('한글상품명'),
       company: value('업체명'),
       standardCode: value('표준코드'),
-      productCode: _firstValue(json, [
-        '대표코드',
-        '표준코드',
-      ]),
+      productCode: _firstValue(json, ['대표코드', '표준코드']),
       ingredientCode: _firstValue(json, [
         '일반명코드(성분명코드)',
         '일반명코드',
