@@ -84,21 +84,21 @@ class SseudeusOnApp extends StatelessWidget {
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide:
-                const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
+            const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide:
-                const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
+            const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: AppColors.lavender, width: 1),
           ),
           hintStyle:
-              const TextStyle(color: AppColors.textHint, fontSize: 12),
+          const TextStyle(color: AppColors.textHint, fontSize: 12),
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
@@ -175,11 +175,11 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _calKey = 0;
 
   List<Widget> get _screens => [
-        HomeScreen(key: ValueKey(_homeKey)),
-        BagScreen(key: ValueKey(_bagKey)),
-        CalendarScreen(key: ValueKey(_calKey)),
-        const CompareScreen(), // ③ 4번째 탭: 약 비교
-      ];
+    HomeScreen(key: ValueKey(_homeKey), onTabChange: (i) => setState(() => _currentIndex = i)),
+    BagScreen(key: ValueKey(_bagKey)),
+    CalendarScreen(key: ValueKey(_calKey)),
+    const CompareScreen(), // ③ 4번째 탭: 약 비교
+  ];
 
   @override
   Widget build(BuildContext context) {
