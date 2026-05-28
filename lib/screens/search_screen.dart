@@ -87,7 +87,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.lavenderLight,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -131,9 +131,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
             if (_selectedForCompare.isNotEmpty) _buildComparePanel(),
-            Expanded(
-              child: _buildBody(),
-            ),
+            Expanded(child: _buildBody()),
           ],
         ),
       ),

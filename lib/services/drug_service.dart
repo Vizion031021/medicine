@@ -202,9 +202,7 @@ class DrugService {
           groups.putIfAbsent(group, () => []).add(row);
           groupIngredientCodes.putIfAbsent(group, () => {}).add(ingredientCode);
         }
-      } catch (_) {
-        // 효능군 중복 조회가 실패해도 병용 금기/성분 중복 결과는 유지한다.
-      }
+      } catch (_) {}
     }
 
     for (final entry in groups.entries) {
@@ -255,7 +253,9 @@ class DrugService {
     return name
         .replaceAll(RegExp(r'\([^)]*\)'), '')
         .replaceAll(RegExp(r'[0-9]+(\.[0-9]+)?'), '')
-        .replaceAll(RegExp(r'(밀리그램|마이크로그램|그램|mg|㎎|g|ml|mL|%)', caseSensitive: false), '')
+        .replaceAll(RegExp(
+            r'(밀리그램|마이크로그램|그램|mg|㎎|g|ml|mL|%)',
+            caseSensitive: false), '')
         .replaceAll(RegExp(r'(연질캡슐|서방정|장용정|캡슐|시럽|현탁액|주사|정|액|주)$'), '')
         .replaceAll(RegExp(r'[\s·ㆍ\-_]'), '')
         .trim();
@@ -267,10 +267,8 @@ class DrugService {
   }) async {
     final rows = <Map<String, dynamic>>[];
     final querySpecs = <MapEntry<String, List<String>>>[
-      if (productCodes.isNotEmpty)
-        MapEntry('제품코드1', productCodes.toList()),
-      if (productCodes.isNotEmpty)
-        MapEntry('제품코드2', productCodes.toList()),
+      if (productCodes.isNotEmpty) MapEntry('제품코드1', productCodes.toList()),
+      if (productCodes.isNotEmpty) MapEntry('제품코드2', productCodes.toList()),
       if (ingredientCodes.isNotEmpty)
         MapEntry('성분코드1', ingredientCodes.toList()),
       if (ingredientCodes.isNotEmpty)
@@ -415,6 +413,8 @@ class DrugService {
         .map((row) => Map<String, dynamic>.from(row as Map))
         .toList();
   }
+
+  // ─── 중복 제거 ────────────────────────────────────────────────────────────
 
   static List<DrugWarning> _dedupeWarnings(List<DrugWarning> warnings) {
     final result = <DrugWarning>[];

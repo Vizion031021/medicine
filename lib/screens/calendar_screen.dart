@@ -173,24 +173,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                   : _errorMessage != null
-                  ? Center(child: Padding(padding: const EdgeInsets.all(24),
-                  child: Text(_errorMessage!, textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 12, color: AppColors.danger))))
-                  : RefreshIndicator(
-                onRefresh: _loadMonth,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
-                  children: [
-                    _buildDayHeader(),
-                    const SizedBox(height: 8),
-                    ..._buildScheduleCards(),
-                    ..._buildMemoCards(),
-                    const SizedBox(height: 8),
-                    _buildMemoButton(),
-                    if (_showMemoInput) _buildMemoInput(),
-                  ],
-                ),
-              ),
+                      ? Center(child: Padding(padding: const EdgeInsets.all(24),
+                          child: Text(_errorMessage!, textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 12, color: AppColors.danger))))
+                      : RefreshIndicator(
+                          onRefresh: _loadMonth,
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
+                            children: [
+                              _buildDayHeader(),
+                              const SizedBox(height: 8),
+                              ..._buildScheduleCards(),
+                              ..._buildMemoCards(),
+                              const SizedBox(height: 8),
+                              _buildMemoButton(),
+                              if (_showMemoInput) _buildMemoInput(),
+                            ],
+                          ),
+                        ),
             ),
           ],
         ),
@@ -209,7 +209,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Row(
             children: [
               const Text('복약 캘린더',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
               const Spacer(),
               if (_bags.length > 1)
                 IconButton(
@@ -244,7 +244,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   const Icon(Icons.date_range, size: 13, color: AppColors.lavender),
                   const SizedBox(width: 6),
                   Text('${_fmtDate(_filterStart)}  ~  ${_fmtDate(_filterEnd)}',
-                      style: const TextStyle(fontSize: 11, color: AppColors.lavenderDark)),
+                    style: const TextStyle(fontSize: 11, color: AppColors.lavenderDark)),
                   const Spacer(),
                   GestureDetector(
                     onTap: _clearFilter,
@@ -291,7 +291,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: Text(
               '${_filterStart!.year}년 ${_filterStart!.month}월',
               style: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
             ),
           ),
           SizedBox(
@@ -323,22 +323,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       color: isSelected
                           ? AppColors.lavender
                           : isToday
-                          ? AppColors.lavenderBg
-                          : Colors.white,
+                              ? AppColors.lavenderBg
+                              : Colors.white,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: isSelected
                             ? AppColors.lavender
                             : isToday
-                            ? AppColors.lavenderBorder
-                            : AppColors.cardBorder,
+                                ? AppColors.lavenderBorder
+                                : AppColors.cardBorder,
                         width: isSelected ? 0 : 0.5,
                       ),
                       boxShadow: isSelected
                           ? [BoxShadow(
-                          color: AppColors.lavender.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2))]
+                              color: AppColors.lavender.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2))]
                           : null,
                     ),
                     child: Column(
@@ -352,8 +352,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             color: isSelected
                                 ? Colors.white.withOpacity(0.85)
                                 : day.weekday == 7 || day.weekday == 6
-                                ? AppColors.danger.withOpacity(0.7)
-                                : AppColors.textHint,
+                                    ? AppColors.danger.withOpacity(0.7)
+                                    : AppColors.textHint,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -520,7 +520,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ),
         Text('$done/${schedules.length} 완료',
-            style: const TextStyle(fontSize: 11, color: AppColors.lavenderDark, fontWeight: FontWeight.w600)),
+          style: const TextStyle(fontSize: 11, color: AppColors.lavenderDark, fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -574,7 +574,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   if (med?.instruction.isNotEmpty == true) ...[
                     const SizedBox(height: 5),
                     Text(med!.instruction,
-                        style: const TextStyle(fontSize: 10, color: AppColors.lavenderDark)),
+                      style: const TextStyle(fontSize: 10, color: AppColors.lavenderDark)),
                   ],
                 ],
               ),
@@ -586,8 +586,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 minimumSize: Size.zero,
               ),
               child: Text(s.isTaken ? '취소' : '복용',
-                  style: TextStyle(fontSize: 11,
-                      color: s.isTaken ? AppColors.textHint : AppColors.lavender)),
+                style: TextStyle(fontSize: 11,
+                  color: s.isTaken ? AppColors.textHint : AppColors.lavender)),
             ),
           ],
         ),
@@ -616,7 +616,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       onPressed: () => setState(() => _showMemoInput = !_showMemoInput),
       icon: const Icon(Icons.edit_outlined, size: 14, color: AppColors.lavender),
       label: const Text('날짜별 메모 추가',
-          style: TextStyle(color: AppColors.lavender, fontSize: 11)),
+        style: TextStyle(color: AppColors.lavender, fontSize: 11)),
       style: OutlinedButton.styleFrom(
         side: const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -638,7 +638,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('${_selectedDay.month}월 ${_selectedDay.day}일 메모',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 8),
           TextField(
             controller: _memoController,
@@ -681,7 +681,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => Padding(
           padding: EdgeInsets.only(
@@ -695,15 +695,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
               Center(child: Container(
                 width: 36, height: 4,
                 decoration: BoxDecoration(
-                    color: AppColors.lavenderBorder,
-                    borderRadius: BorderRadius.circular(2)),
+                  color: AppColors.lavenderBorder,
+                  borderRadius: BorderRadius.circular(2)),
               )),
               const SizedBox(height: 16),
               const Text('기간 설정',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
               const SizedBox(height: 4),
               const Text('설정한 기간의 날짜만 스트립으로 표시됩니다.',
-                  style: TextStyle(fontSize: 11, color: AppColors.textHint)),
+                style: TextStyle(fontSize: 11, color: AppColors.textHint)),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -712,7 +712,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     onTap: () async { await _pickFilterStart(); setSheet(() {}); },
                   )),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 10),
-                      child: Text('~', style: TextStyle(fontSize: 16, color: AppColors.textHint))),
+                    child: Text('~', style: TextStyle(fontSize: 16, color: AppColors.textHint))),
                   Expanded(child: _DatePickerButton(
                     label: '종료일', value: _fmtDate(_filterEnd),
                     onTap: () async { await _pickFilterEnd(); setSheet(() {}); },
@@ -721,7 +721,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               const SizedBox(height: 14),
               const Text('빠른 선택',
-                  style: TextStyle(fontSize: 11, color: AppColors.textHint)),
+                style: TextStyle(fontSize: 11, color: AppColors.textHint)),
               const SizedBox(height: 8),
               Wrap(spacing: 6, runSpacing: 6, children: [
                 _presetBtn(ctx, '이번 주', 7),
@@ -737,7 +737,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ? () { Navigator.pop(ctx); _applyFilter(); }
                       : null,
                   style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 13)),
+                    padding: const EdgeInsets.symmetric(vertical: 13)),
                   child: const Text('적용'),
                 ),
               ),
@@ -768,7 +768,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           border: Border.all(color: AppColors.lavenderBorder, width: 0.7),
         ),
         child: Text(label,
-            style: const TextStyle(fontSize: 11, color: AppColors.lavenderDark)),
+          style: const TextStyle(fontSize: 11, color: AppColors.lavenderDark)),
       ),
     );
   }
@@ -793,10 +793,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('캘린더 표시 순서',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.lavenderDark)),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.lavenderDark)),
           const SizedBox(height: 4),
           const Text('드래그하여 순서를 변경하세요',
-              style: TextStyle(fontSize: 10, color: AppColors.textHint)),
+            style: TextStyle(fontSize: 10, color: AppColors.textHint)),
           const SizedBox(height: 8),
           ReorderableListView.builder(
             shrinkWrap: true,
@@ -830,10 +830,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(bag.name,
-                        style: const TextStyle(fontSize: 12, color: AppColors.textPrimary)),
+                      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary)),
                     const Spacer(),
                     Text('${i + 1}번째',
-                        style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
+                      style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
                   ],
                 ),
               );
@@ -862,7 +862,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('메모 저장 실패: $e'), backgroundColor: AppColors.danger));
+        SnackBar(content: Text('메모 저장 실패: $e'), backgroundColor: AppColors.danger));
     }
   }
 }
@@ -884,7 +884,7 @@ class _EmptyCard extends StatelessWidget {
         border: Border.all(color: AppColors.cardBorder, width: 0.5),
       ),
       child: Center(child: Text(text,
-          style: const TextStyle(fontSize: 12, color: AppColors.textHint))),
+        style: const TextStyle(fontSize: 12, color: AppColors.textHint))),
     );
   }
 }
@@ -900,7 +900,7 @@ class _LegendDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(width: 8, height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 4),
         Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
       ],

@@ -27,6 +27,7 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
   late DateTime _endDate;
   int _selectedPresetDays = 7;
   bool _isSaving = false;
+  late final TextEditingController _customNameController;
 
   @override
   void initState() {
@@ -36,6 +37,16 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     final now = DateTime.now();
     _startDate = DateTime(now.year, now.month, now.day);
     _endDate = DateTime(now.year, now.month, now.day + 6);
+    final defaultName = widget.drug.name.length > 20
+        ? widget.drug.name.substring(0, 20)
+        : widget.drug.name;
+    _customNameController = TextEditingController(text: defaultName);
+  }
+
+  @override
+  void dispose() {
+    _customNameController.dispose();
+    super.dispose();
   }
 
   @override
@@ -182,6 +193,26 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 약 표시 이름
+                const _SettingLabel('약 표시 이름'),
+                const SizedBox(height: 4),
+                const Text(
+                  '캘린더·약봉투에 표시될 이름을 수정할 수 있어요',
+                  style: TextStyle(fontSize: 10, color: AppColors.textHint),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _customNameController,
+                  maxLength: 30,
+                  decoration: const InputDecoration(
+                    hintText: '약 표시 이름 입력',
+                    prefixIcon: Icon(Icons.edit_outlined, size: 16, color: AppColors.lavender),
+                    counterText: '',
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
                 // 시간대
                 const _SettingLabel('복용 시간대'),
                 const SizedBox(height: 8),
@@ -353,6 +384,9 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
 
       final medication = await MedicationService.addMedication(
         drug: widget.drug,
+        customName: _customNameController.text.trim().isNotEmpty
+            ? _customNameController.text.trim()
+            : widget.drug.name,
         instruction: instruction,
         durationDays: _durationDays,
         startDate: _startDate,
