@@ -3,7 +3,6 @@ import 'package:sseudeuson/models/drug_info.dart';
 import 'package:sseudeuson/models/user_medication.dart';
 import 'package:sseudeuson/services/auth_service.dart';
 import 'package:sseudeuson/services/drug_service.dart';
-// import 'package:sseudeuson/services/notification_service.dart';
 
 class MedicationService {
   static final SupabaseClient _client = Supabase.instance.client;
@@ -85,7 +84,6 @@ class MedicationService {
     await _createDefaultSchedules(
       userId: userId,
       medicationId: medication.id,
-      medicationName: medication.displayName,
       durationDays: durationDays,
       startDate: startDate,
       endDate: endDate,
@@ -99,7 +97,6 @@ class MedicationService {
   static Future<void> _createDefaultSchedules({
     required String userId,
     required String medicationId,
-    required String medicationName,
     required int durationDays,
     required DateTime? startDate,
     required DateTime? endDate,
@@ -120,8 +117,6 @@ class MedicationService {
     for (var dayOffset = 0; dayOffset < days; dayOffset++) {
       final date = DateTime(start.year, start.month, start.day + dayOffset);
       for (final time in scheduleTimes) {
-        final scheduledAt = _combineDateAndTime(date, time);
-        final mealLabel = _mealLabelFromTime(time);
         final timing = mealTimingLabel == '식전' ? 'BEFORE' : 'AFTER';
         rows.add({
           'user_id': userId,
@@ -154,55 +149,16 @@ class MedicationService {
         // 발표 데모에서는 복약 일정 생성을 우선한다. 규칙 저장 실패가 약봉투 저장을 막지 않게 둔다.
       }
     }
-
-    for (var dayOffset = 0; dayOffset < days && dayOffset < 7; dayOffset++) {
-      final date = DateTime(start.year, start.month, start.day + dayOffset);
-      for (final time in scheduleTimes) {
-        final scheduledAt = _combineDateAndTime(date, time);
-        if (!scheduledAt.isAfter(DateTime.now())) continue;
-        final mealLabel = _mealLabelFromTime(time);
-        // try {
-        //   await NotificationService.scheduleMedicationReminder(
-        //     id: '$medicationId-$dayOffset-$time'.hashCode.abs(),
-        //     title: '복용 알림',
-        //     body:
-        //         '$mealLabel ${_mealTimingMessage(mealTimingLabel)} 약 복용하셨나요? ($medicationName)',
-        //     scheduledAt: scheduledAt,
-        //   );
-        // } catch (_) {
-        //   // 알림 권한/기기 설정 문제로 스케줄 저장이 실패하지 않도록 한다.
-        // }
-      }
-    }
-  }
-
-  static DateTime _combineDateAndTime(DateTime date, String time) {
-    final parts = time.split(':');
-    final hour = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 8;
-    final minute = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
-    return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
   static DateTime _dateOnlyDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
-
-  static String _mealLabelFromTime(String time) {
-    final hour = int.tryParse(time.split(':').first) ?? 8;
-    if (hour < 11) return '아침';
-    if (hour < 16) return '점심';
-    return '저녁';
-  }
 
   static String _baseEventFromTime(String time) {
     final hour = int.tryParse(time.split(':').first) ?? 8;
     if (hour < 11) return 'BREAKFAST';
     if (hour < 16) return 'LUNCH';
     return 'DINNER';
-  }
-
-  static String _mealTimingMessage(String label) {
-    if (label == '식전') return '식사 전';
-    return '식사 후';
   }
 
   static Future<void> deactivateMedication(String medicationId) async {

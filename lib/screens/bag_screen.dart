@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sseudeuson/models/drug_info.dart';
-import 'package:sseudeuson/models/medicine_model.dart';
 import 'package:sseudeuson/models/user_medication.dart';
-import 'package:sseudeuson/screens/bag_detail_screen.dart';
 import 'package:sseudeuson/screens/drug_detail_screen.dart';
 import 'package:sseudeuson/services/bag_service.dart';
 import 'package:sseudeuson/services/drug_service.dart';
@@ -464,7 +462,6 @@ class _BagScreenState extends State<BagScreen> {
                                   // 약물 상세(복용방법)으로 이동
                                   final drug = med.drug;
                                   if (drug == null) return;
-                                  // legacy BagDetailScreen으로 연결 (추후 DrugDetailScreen으로 통일 가능)
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(

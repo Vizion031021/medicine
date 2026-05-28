@@ -9,7 +9,6 @@ import 'package:sseudeuson/screens/calendar_screen.dart';
 import 'package:sseudeuson/screens/compare_screen.dart';
 import 'package:sseudeuson/screens/auth/login_screen.dart';
 import 'package:sseudeuson/services/auth_service.dart';
-// import 'package:sseudeuson/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +22,6 @@ void main() async {
     url: SupabaseConfig.url,
     anonKey: SupabaseConfig.anonKey,
   );
-  // await NotificationService.initialize();
 
   runApp(const SseudeusOnApp());
 }
