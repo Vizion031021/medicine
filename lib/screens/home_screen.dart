@@ -65,14 +65,13 @@ class _StarPoint {
 
 class _ScheduleItem {
   final String? scheduleId;
-  final int num;
   final String name;
   final String time;
   final String detail;
   final bool done;
   const _ScheduleItem({
     this.scheduleId,
-    required this.num, required this.name,
+    required this.name,
     required this.time, required this.detail,
     required this.done,
   });
@@ -219,7 +218,6 @@ class _HomeScreenState extends State<HomeScreen>
           final s = schedules[i];
           return _ScheduleItem(
             scheduleId: s.id,
-            num: i + 1,
             name: s.medication?.displayName ?? '등록 약',
             time: s.time,
             detail: s.medication?.instruction.isNotEmpty == true
@@ -245,22 +243,48 @@ class _HomeScreenState extends State<HomeScreen>
     } catch (_) {}
   }
 
-  // ── 현재 시간대 일정만 필터 ──
-  List<_ScheduleItem> get _currentPeriodSchedules {
-    return _todaySchedules.where((s) {
-      final sh = int.tryParse(s.time.split(':').first) ?? -1;
-      switch (_period) {
-        case DayPeriod.morning:   return sh >= 5 && sh < 12;
-        case DayPeriod.afternoon: return sh >= 12 && sh < 17;
-        case DayPeriod.evening:   return sh >= 17 && sh < 21;
-        case DayPeriod.night:     return sh >= 21 || sh < 5;
-      }
-    }).toList();
+  // ── 오늘 전체 일정을 아침/점심/저녁 기준으로 묶기 ──
+  List<_ScheduleItem> _schedulesForMeal(String meal) {
+    final items = _todaySchedules.where((s) => _mealLabel(s.time) == meal).toList();
+    items.sort((a, b) => a.time.compareTo(b.time));
+    return items;
+  }
+
+  String _mealLabel(String time) {
+    final hour = int.tryParse(time.split(':').first) ?? 9;
+    if (hour < 11) return '아침';
+    if (hour < 16) return '점심';
+    return '저녁';
+  }
+
+  Color _mealColor(String meal) {
+    switch (meal) {
+      case '아침':
+        return const Color(0xFFEF9F27);
+      case '점심':
+        return AppColors.lavender;
+      default:
+        return const Color(0xFF4A6FA5);
+    }
+  }
+
+  bool _isInCurrentPeriod(_ScheduleItem schedule) {
+    final hour = int.tryParse(schedule.time.split(':').first) ?? -1;
+    switch (_period) {
+      case DayPeriod.morning:
+        return hour >= 5 && hour < 12;
+      case DayPeriod.afternoon:
+        return hour >= 12 && hour < 17;
+      case DayPeriod.evening:
+        return hour >= 17 && hour < 21;
+      case DayPeriod.night:
+        return hour >= 21 || hour < 5;
+    }
   }
 
   // ── 현재 시간대 미복용 약 있는지 ──
   bool get _hasPendingNow =>
-      _currentPeriodSchedules.any((s) => !s.done);
+      _todaySchedules.any((s) => _isInCurrentPeriod(s) && !s.done);
 
   // ── 봉투에 속한 약물 수 ──
   int _bagMedCount(String bagId) =>
@@ -495,11 +519,14 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ── 오늘의 복약 일정 (현재 시간대만) ────────────────────────────────────────
+  // ── 오늘의 복약 일정 ────────────────────────────────────────────────────────
 
   Widget _buildTodaySchedule() {
-    final current = _currentPeriodSchedules;
-    final doneCount = current.where((s) => s.done).length;
+    final doneCount = _todaySchedules.where((s) => s.done).length;
+    final mealOrder = ['아침', '점심', '저녁'];
+    final grouped = {
+      for (final meal in mealOrder) meal: _schedulesForMeal(meal),
+    };
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -515,7 +542,7 @@ class _HomeScreenState extends State<HomeScreen>
                   const Text('오늘의 복약 일정',
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
                           color: AppColors.textPrimary)),
-                  Text('${_period.label} · $doneCount / ${current.length} 복용',
+                  Text('$doneCount / ${_todaySchedules.length} 복용',
                       style: const TextStyle(fontSize: 10,
                           color: AppColors.lavenderDark)),
                 ],
@@ -540,25 +567,27 @@ class _HomeScreenState extends State<HomeScreen>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.cardBorder, width: 0.5),
             ),
-            child: current.isEmpty
+            child: _todaySchedules.isEmpty
                 ? Padding(
               padding: const EdgeInsets.all(16),
               child: Center(
                 child: Text(
-                  '${_period.label}에 예정된 복약 일정이 없습니다.',
+                  '오늘 예정된 복약 일정이 없습니다.',
                   style: const TextStyle(
                       fontSize: 12, color: AppColors.textHint),
                 ),
               ),
             )
                 : Column(
-              children: List.generate(current.length, (i) {
-                return _ScheduleRow(
-                  item: current[i],
-                  isLast: i == current.length - 1,
-                  onChanged: _loadTodaySchedules,
-                );
-              }),
+              children: [
+                for (final meal in mealOrder)
+                  _ScheduleMealSection(
+                    meal: meal,
+                    color: _mealColor(meal),
+                    items: grouped[meal]!,
+                    onChanged: _loadTodaySchedules,
+                  ),
+              ],
             ),
           ),
         ],
@@ -847,10 +876,15 @@ class _ScheduleRowState extends State<_ScheduleRow> {
   @override
   void initState() { super.initState(); _done = widget.item.done; }
 
-  String _mealLabel(String t) {
-    final h = int.tryParse(t.split(':').first) ?? 9;
-    if (h < 11) return '아침'; if (h < 16) return '점심'; return '저녁';
+  @override
+  void didUpdateWidget(covariant _ScheduleRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.done != widget.item.done ||
+        oldWidget.item.scheduleId != widget.item.scheduleId) {
+      _done = widget.item.done;
+    }
   }
+
   String _mealTiming(String d) {
     if (d.contains('식전')) return '식전'; if (d.contains('식후')) return '식후'; return '예정';
   }
@@ -861,10 +895,8 @@ class _ScheduleRowState extends State<_ScheduleRow> {
 
   @override
   Widget build(BuildContext context) {
-    final meal = _mealLabel(widget.item.time);
     final timing = _mealTiming(widget.item.detail);
     final timeText = _fmtTime(widget.item.time);
-    final mc = switch(meal){'아침'=>const Color(0xFFEF9F27),'점심'=>AppColors.lavender,_=>const Color(0xFF4A6FA5)};
 
     return Column(
       children: [
@@ -873,25 +905,29 @@ class _ScheduleRowState extends State<_ScheduleRow> {
           child: Row(
             children: [
               Container(
-                width: 54,
-                padding: const EdgeInsets.symmetric(vertical: 6),
+                width: 48,
+                padding: const EdgeInsets.symmetric(vertical: 7),
                 decoration: BoxDecoration(
-                  color: mc.withOpacity(0.12),
+                  color: AppColors.lavenderBg,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: mc.withOpacity(0.28), width: 0.8),
+                  border: Border.all(color: AppColors.lavenderBorder, width: 0.8),
                 ),
-                child: Column(children: [
-                  Text(meal, style: TextStyle(fontSize: 12, color: mc, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 1),
-                  Text(timeText, style: const TextStyle(fontSize: 9, color: AppColors.textHint, fontWeight: FontWeight.w600)),
-                ]),
+                child: Text(
+                  timeText,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.lavenderDark,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(widget.item.name, maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                 const SizedBox(height: 2),
-                Text('$meal $timing 복용',
+                Text('$timing 복용',
                     style: const TextStyle(fontSize: 10, color: AppColors.textHint),
                     overflow: TextOverflow.ellipsis),
               ])),
@@ -922,6 +958,93 @@ class _ScheduleRowState extends State<_ScheduleRow> {
         if (!widget.isLast)
           const Divider(height: 0.5, color: AppColors.cardBorder, indent: 14, endIndent: 14),
       ],
+    );
+  }
+}
+
+class _ScheduleMealSection extends StatelessWidget {
+  final String meal;
+  final Color color;
+  final List<_ScheduleItem> items;
+  final VoidCallback? onChanged;
+
+  const _ScheduleMealSection({
+    required this.meal,
+    required this.color,
+    required this.items,
+    this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final done = items.where((item) => item.done).length;
+
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AppColors.cardBorder, width: 0.5),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  meal,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '$done/${items.length}',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textHint,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  '예정된 복약 일정이 없습니다.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textHint),
+                ),
+              )
+            else
+              Container(
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  children: List.generate(items.length, (i) {
+                    return _ScheduleRow(
+                      item: items[i],
+                      isLast: i == items.length - 1,
+                      onChanged: onChanged,
+                    );
+                  }),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

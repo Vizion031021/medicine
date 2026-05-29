@@ -9,7 +9,6 @@ import 'package:sseudeuson/screens/calendar_screen.dart';
 import 'package:sseudeuson/screens/compare_screen.dart';
 import 'package:sseudeuson/screens/auth/login_screen.dart';
 import 'package:sseudeuson/services/auth_service.dart';
-// import 'package:sseudeuson/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +22,6 @@ void main() async {
     url: SupabaseConfig.url,
     anonKey: SupabaseConfig.anonKey,
   );
-  // await NotificationService.initialize();
 
   runApp(const SseudeusOnApp());
 }
@@ -174,8 +172,25 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _bagKey = 0;
   int _calKey = 0;
 
+  void _changeTab(int index) {
+    setState(() {
+      _currentIndex = index;
+      switch (index) {
+        case 0:
+          _homeKey++;
+          break;
+        case 1:
+          _bagKey++;
+          break;
+        case 2:
+          _calKey++;
+          break;
+      }
+    });
+  }
+
   List<Widget> get _screens => [
-    HomeScreen(key: ValueKey(_homeKey), onTabChange: (i) => setState(() => _currentIndex = i)),
+    HomeScreen(key: ValueKey(_homeKey), onTabChange: _changeTab),
     BagScreen(key: ValueKey(_bagKey)),
     CalendarScreen(key: ValueKey(_calKey)),
     const CompareScreen(), // ③ 4번째 탭: 약 비교
@@ -207,37 +222,28 @@ class _MainScaffoldState extends State<MainScaffold> {
                 activeIcon: Icons.home_rounded,
                 label: '홈',
                 isActive: _currentIndex == 0,
-                onTap: () => setState(() {
-                  _currentIndex = 0;
-                  _homeKey++;
-                }),
+                onTap: () => _changeTab(0),
               ),
               _NavItem(
                 icon: Icons.medication_outlined,
                 activeIcon: Icons.medication_rounded,
                 label: '약봉투',
                 isActive: _currentIndex == 1,
-                onTap: () => setState(() {
-                  _currentIndex = 1;
-                  _bagKey++;
-                }),
+                onTap: () => _changeTab(1),
               ),
               _NavItem(
                 icon: Icons.calendar_today_outlined,
                 activeIcon: Icons.calendar_today,
                 label: '캘린더',
                 isActive: _currentIndex == 2,
-                onTap: () => setState(() {
-                  _currentIndex = 2;
-                  _calKey++;
-                }),
+                onTap: () => _changeTab(2),
               ),
               _NavItem(
                 icon: Icons.compare_arrows_outlined,
                 activeIcon: Icons.compare_arrows_rounded,
                 label: '약 비교', // ③ 탭 이름 변경
                 isActive: _currentIndex == 3,
-                onTap: () => setState(() => _currentIndex = 3),
+                onTap: () => _changeTab(3),
               ),
             ],
           ),

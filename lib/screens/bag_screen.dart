@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sseudeuson/models/drug_info.dart';
-import 'package:sseudeuson/models/medicine_model.dart';
 import 'package:sseudeuson/models/user_medication.dart';
-import 'package:sseudeuson/screens/bag_detail_screen.dart';
 import 'package:sseudeuson/screens/drug_detail_screen.dart';
 import 'package:sseudeuson/services/bag_service.dart';
 import 'package:sseudeuson/services/drug_service.dart';
@@ -266,6 +264,269 @@ class _BagScreenState extends State<BagScreen> {
     await _load();
   }
 
+  // ── 복용 설정 수정 ──────────────────────────────────────────────────────
+
+  Future<void> _showEditMedicationDialog(UserMedication med) async {
+    final nameCtrl = TextEditingController(text: med.displayName);
+    final slots = _slotsFromInstruction(med.instruction);
+    var mealTiming = med.instruction.contains('식전') ? '식전' : '식후';
+    var dates = _datesFromInstruction(med.instruction);
+    var startDate = dates.$1;
+    var endDate = dates.$2;
+    var selectedPresetDays = _presetFor(startDate, endDate);
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setInner) {
+          Future<void> pickStart() async {
+            final picked = await showDatePicker(
+              context: ctx,
+              initialDate: startDate,
+              firstDate: DateTime.now().subtract(const Duration(days: 365)),
+              lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+            );
+            if (picked == null) return;
+            setInner(() {
+              startDate = DateTime(picked.year, picked.month, picked.day);
+              if (selectedPresetDays > 0) {
+                endDate = DateTime(
+                  startDate.year,
+                  startDate.month,
+                  startDate.day + selectedPresetDays - 1,
+                );
+              } else if (endDate.isBefore(startDate)) {
+                endDate = startDate;
+              }
+              selectedPresetDays = _presetFor(startDate, endDate);
+            });
+          }
+
+          Future<void> pickEnd() async {
+            final picked = await showDatePicker(
+              context: ctx,
+              initialDate: endDate.isBefore(startDate) ? startDate : endDate,
+              firstDate: startDate,
+              lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+            );
+            if (picked == null) return;
+            setInner(() {
+              endDate = DateTime(picked.year, picked.month, picked.day);
+              selectedPresetDays = _presetFor(startDate, endDate);
+            });
+          }
+
+          return AlertDialog(
+            title: const Text(
+              '복용 설정 수정',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _EditLabel('약 표시 이름'),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: nameCtrl,
+                    maxLength: 30,
+                    decoration: const InputDecoration(
+                      hintText: '약 표시 이름',
+                      counterText: '',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const _EditLabel('복용 시간대'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: const ['아침', '점심', '저녁'].map((slot) {
+                      final selected = slots.contains(slot);
+                      return _SmallChoiceChip(
+                        label: slot,
+                        isSelected: selected,
+                        onTap: () => setInner(() {
+                          if (selected) {
+                            if (slots.length > 1) slots.remove(slot);
+                          } else {
+                            slots.add(slot);
+                          }
+                        }),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  const _EditLabel('복용 기준'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: ['식전', '식후'].map((timing) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: _SmallChoiceChip(
+                          label: timing,
+                          isSelected: mealTiming == timing,
+                          onTap: () => setInner(() => mealTiming = timing),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  const _EditLabel('복용 기간'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: const [
+                      (3, '3일'),
+                      (7, '7일'),
+                      (14, '14일'),
+                      (30, '한달'),
+                    ].map((preset) {
+                      return _SmallChoiceChip(
+                        label: preset.$2,
+                        isSelected: selectedPresetDays == preset.$1,
+                        onTap: () => setInner(() {
+                          selectedPresetDays = preset.$1;
+                          endDate = DateTime(
+                            startDate.year,
+                            startDate.month,
+                            startDate.day + preset.$1 - 1,
+                          );
+                        }),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _EditDateButton(
+                          label: '시작',
+                          value: _fmtDate(startDate),
+                          onTap: pickStart,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _EditDateButton(
+                          label: '종료',
+                          value: _fmtDate(endDate),
+                          onTap: pickEnd,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('취소', style: TextStyle(color: AppColors.textHint)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('저장'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result != true) {
+      nameCtrl.dispose();
+      return;
+    }
+
+    try {
+      final sortedSlots = slots.toList()
+        ..sort((a, b) => _slotHour(a).compareTo(_slotHour(b)));
+      final instruction =
+          '${sortedSlots.join(', ')} $mealTiming 복용 · '
+          '${_fmtDate(startDate)}~${_fmtDate(endDate)}';
+      await MedicationService.updateMedicationSettings(
+        medication: med,
+        customName: nameCtrl.text.trim().isNotEmpty
+            ? nameCtrl.text.trim()
+            : med.displayName,
+        instruction: instruction,
+        durationDays: endDate.difference(startDate).inDays + 1,
+        startDate: startDate,
+        endDate: endDate,
+        scheduleTimes: sortedSlots.map(_slotTime).toList(),
+        mealTimingLabel: mealTiming,
+      );
+      nameCtrl.dispose();
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${med.displayName} 복용 설정을 수정했습니다.'),
+          backgroundColor: AppColors.lavender,
+        ),
+      );
+    } catch (e) {
+      nameCtrl.dispose();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('수정 실패: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  Set<String> _slotsFromInstruction(String instruction) {
+    final slots = <String>{};
+    if (instruction.contains('아침')) slots.add('아침');
+    if (instruction.contains('점심')) slots.add('점심');
+    if (instruction.contains('저녁')) slots.add('저녁');
+    if (slots.isEmpty) slots.add('아침');
+    return slots;
+  }
+
+  (DateTime, DateTime) _datesFromInstruction(String instruction) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final match = RegExp(
+      r'(\d{4})\.(\d{2})\.(\d{2})~(\d{4})\.(\d{2})\.(\d{2})',
+    ).firstMatch(instruction);
+    if (match == null) {
+      return (today, DateTime(today.year, today.month, today.day + 6));
+    }
+    final start = DateTime(
+      int.parse(match.group(1)!),
+      int.parse(match.group(2)!),
+      int.parse(match.group(3)!),
+    );
+    final end = DateTime(
+      int.parse(match.group(4)!),
+      int.parse(match.group(5)!),
+      int.parse(match.group(6)!),
+    );
+    return (start, end);
+  }
+
+  int _presetFor(DateTime start, DateTime end) {
+    final days = end.difference(start).inDays + 1;
+    return const [3, 7, 14, 30].contains(days) ? days : 0;
+  }
+
+  String _fmtDate(DateTime date) =>
+      '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
+
+  int _slotHour(String slot) {
+    if (slot == '점심') return 12;
+    if (slot == '저녁') return 18;
+    return 9;
+  }
+
+  String _slotTime(String slot) => '${_slotHour(slot).toString().padLeft(2, '0')}:00:00';
+
   // ── 약물 삭제 ─────────────────────────────────────────────────────────────
 
   Future<void> _removeMedication(UserMedication med) async {
@@ -367,20 +628,20 @@ class _BagScreenState extends State<BagScreen> {
                       prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.lavender),
                       suffixIcon: _isSearching
                           ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ))
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ))
                           : _searchCtrl.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.close, size: 16),
-                                  onPressed: () {
-                                    _searchCtrl.clear();
-                                    setState(() => _searchResults = []);
-                                  })
-                              : null,
+                          ? IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() => _searchResults = []);
+                          })
+                          : null,
                     ),
                   ),
                   if (_searchResults.isNotEmpty)
@@ -397,7 +658,7 @@ class _BagScreenState extends State<BagScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         itemCount: _searchResults.length,
                         separatorBuilder: (_, __) =>
-                            const Divider(height: 0.5, indent: 14, endIndent: 14),
+                        const Divider(height: 0.5, indent: 14, endIndent: 14),
                         itemBuilder: (ctx, i) {
                           final drug = _searchResults[i];
                           return ListTile(
@@ -407,7 +668,7 @@ class _BagScreenState extends State<BagScreen> {
                                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                             subtitle: Text(
                               '${drug.prescriptionType.isEmpty ? '' : '${drug.prescriptionType} · '}'
-                              '${drug.formType.isEmpty ? drug.company : drug.formType}',
+                                  '${drug.formType.isEmpty ? drug.company : drug.formType}',
                               style: const TextStyle(fontSize: 10),
                             ),
                             trailing: const Icon(Icons.add_circle_outline,
@@ -428,62 +689,51 @@ class _BagScreenState extends State<BagScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                 : _errorMsg != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(_errorMsg!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(fontSize: 12, color: AppColors.danger)),
-                        ))
-                    : RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView(
-                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
-                          children: [
-                            ..._bags.map((bag) {
-                              final meds = _medications
-                                  .where((m) =>
-                                      (_assignments[m.id] ?? 'default') == bag.id)
-                                  .toList();
-                              final bagWarnings = _bagWarnings.isNotEmpty && meds.length >= 2
-                                  ? _bagWarnings
-                                  : <DrugWarning>[];
-                              return _BagCard(
-                                bag: bag,
-                                medications: meds,
-                                warnings: bagWarnings,
-                                isExpanded: _expanded.contains(bag.id),
-                                onToggle: () => setState(() {
-                                  if (_expanded.contains(bag.id)) {
-                                    _expanded.remove(bag.id);
-                                  } else {
-                                    _expanded.add(bag.id);
-                                  }
-                                }),
-                                onMedTap: (med) {
-                                  // 약물 상세(복용방법)으로 이동
-                                  final drug = med.drug;
-                                  if (drug == null) return;
-                                  // legacy BagDetailScreen으로 연결 (추후 DrugDetailScreen으로 통일 가능)
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => DrugDetailScreen(drug: drug),
-                                    ),
-                                  ).then((_) => _load());
-                                },
-                                onMedDelete: _removeMedication,
-                                onBagDelete: bag.id == 'default'
-                                    ? null
-                                    : () async {
-                                        await BagService.removeBag(bag.id);
-                                        await _load();
-                                      },
-                              );
-                            }),
-                          ],
-                        ),
-                      ),
+                ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(_errorMsg!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+                ))
+                : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
+                children: [
+                  ..._bags.map((bag) {
+                    final meds = _medications
+                        .where((m) =>
+                    (_assignments[m.id] ?? 'default') == bag.id)
+                        .toList();
+                    final bagWarnings = _bagWarnings.isNotEmpty && meds.length >= 2
+                        ? _bagWarnings
+                        : <DrugWarning>[];
+                    return _BagCard(
+                      bag: bag,
+                      medications: meds,
+                      warnings: bagWarnings,
+                      isExpanded: _expanded.contains(bag.id),
+                      onToggle: () => setState(() {
+                        if (_expanded.contains(bag.id)) {
+                          _expanded.remove(bag.id);
+                        } else {
+                          _expanded.add(bag.id);
+                        }
+                      }),
+                      onMedTap: _showEditMedicationDialog,
+                      onMedDelete: _removeMedication,
+                      onBagDelete: bag.id == 'default'
+                          ? null
+                          : () async {
+                        await BagService.removeBag(bag.id);
+                        await _load();
+                      },
+                    );
+                  }),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -584,7 +834,7 @@ class _BagCard extends StatelessWidget {
                     const Text('이 봉투에 아직 약이 없습니다. 상단 검색으로 추가하세요.',
                         style: TextStyle(fontSize: 10, color: AppColors.textHint))
                   else ...[
-                    const Text('탭하면 약품 상세·복용 설정을 볼 수 있어요',
+                    const Text('탭하면 복용 시간·기간을 수정할 수 있어요',
                         style: TextStyle(fontSize: 10, color: AppColors.textHint)),
                     const SizedBox(height: 8),
                     Wrap(
@@ -716,6 +966,112 @@ class _StatusBadge extends StatelessWidget {
           fontSize: 10,
           color: hasWarning ? const Color(0xFF854F0B) : const Color(0xFF2E7D32),
           fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _EditLabel extends StatelessWidget {
+  final String text;
+  const _EditLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: AppColors.textPrimary,
+      ),
+    );
+  }
+}
+
+class _SmallChoiceChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _SmallChoiceChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.lavender : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? AppColors.lavender : AppColors.lavenderBorder,
+            width: 0.7,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: isSelected ? Colors.white : AppColors.lavenderDark,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EditDateButton extends StatelessWidget {
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  const _EditDateButton({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.lavenderBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.lavenderBorder, width: 0.7),
+        ),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                color: AppColors.textHint,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.lavenderDark,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     );

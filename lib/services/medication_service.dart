@@ -3,7 +3,6 @@ import 'package:sseudeuson/models/drug_info.dart';
 import 'package:sseudeuson/models/user_medication.dart';
 import 'package:sseudeuson/services/auth_service.dart';
 import 'package:sseudeuson/services/drug_service.dart';
-// import 'package:sseudeuson/services/notification_service.dart';
 
 class MedicationService {
   static final SupabaseClient _client = Supabase.instance.client;
@@ -60,12 +59,12 @@ class MedicationService {
     final inserted = await _client
         .from('user_medications')
         .insert({
-          'user_id': userId,
-          'product_code': code,
-          'is_active': true,
-          'custom_name': customName,
-          'instruction': instruction,
-        })
+      'user_id': userId,
+      'product_code': code,
+      'is_active': true,
+      'custom_name': customName,
+      'instruction': instruction,
+    })
         .select()
         .single();
 
@@ -77,7 +76,6 @@ class MedicationService {
     await _createDefaultSchedules(
       userId: userId,
       medicationId: medication.id,
-      medicationName: medication.displayName,
       durationDays: durationDays,
       startDate: startDate,
       endDate: endDate,
@@ -88,10 +86,51 @@ class MedicationService {
     return medication;
   }
 
+  static Future<void> updateMedicationSettings({
+    required UserMedication medication,
+    required String customName,
+    required String instruction,
+    required int durationDays,
+    required DateTime startDate,
+    required DateTime endDate,
+    required List<String> scheduleTimes,
+    required String mealTimingLabel,
+  }) async {
+    final userId = await AuthService.getCurrentUserId();
+    if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
+
+    await _client
+        .from('user_medications')
+        .update({
+      'custom_name': customName,
+      'instruction': instruction,
+      'updated_at': DateTime.now().toIso8601String(),
+    })
+        .eq('id', medication.id)
+        .eq('user_id', userId);
+
+    final now = DateTime.now().toIso8601String();
+    await _client
+        .from('user_schedules')
+        .update({'deleted_at': now})
+        .eq('user_medication_id', medication.id)
+        .eq('user_id', userId)
+        .isFilter('deleted_at', null);
+
+    await _createDefaultSchedules(
+      userId: userId,
+      medicationId: medication.id,
+      durationDays: durationDays,
+      startDate: startDate,
+      endDate: endDate,
+      scheduleTimes: scheduleTimes,
+      mealTimingLabel: mealTimingLabel,
+    );
+  }
+
   static Future<void> _createDefaultSchedules({
     required String userId,
     required String medicationId,
-    required String medicationName,
     required int durationDays,
     required DateTime? startDate,
     required DateTime? endDate,
@@ -136,7 +175,9 @@ class MedicationService {
     if (ruleRows.isNotEmpty) {
       try {
         await _client.from('medication_rules').insert(ruleRows);
-      } catch (_) {}
+      } catch (_) {
+        // 발표 데모에서는 복약 일정 생성을 우선한다. 규칙 저장 실패가 약봉투 저장을 막지 않게 둔다.
+      }
     }
   }
 
