@@ -9,6 +9,7 @@ import 'package:sseudeuson/screens/calendar_screen.dart';
 import 'package:sseudeuson/screens/compare_screen.dart';
 import 'package:sseudeuson/screens/auth/login_screen.dart';
 import 'package:sseudeuson/services/auth_service.dart';
+// import 'package:sseudeuson/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +23,7 @@ void main() async {
     url: SupabaseConfig.url,
     anonKey: SupabaseConfig.anonKey,
   );
+  // await NotificationService.initialize();
 
   runApp(const SseudeusOnApp());
 }
@@ -172,25 +174,8 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _bagKey = 0;
   int _calKey = 0;
 
-  void _changeTab(int index) {
-    setState(() {
-      _currentIndex = index;
-      switch (index) {
-        case 0:
-          _homeKey++;
-          break;
-        case 1:
-          _bagKey++;
-          break;
-        case 2:
-          _calKey++;
-          break;
-      }
-    });
-  }
-
   List<Widget> get _screens => [
-    HomeScreen(key: ValueKey(_homeKey), onTabChange: _changeTab),
+    HomeScreen(key: ValueKey(_homeKey), onTabChange: (i) => setState(() => _currentIndex = i)),
     BagScreen(key: ValueKey(_bagKey)),
     CalendarScreen(key: ValueKey(_calKey)),
     const CompareScreen(), // ③ 4번째 탭: 약 비교
@@ -208,44 +193,49 @@ class _MainScaffoldState extends State<MainScaffold> {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: AppColors.cardBorder, width: 0.5),
-        ),
+        border: Border(top: BorderSide(color: AppColors.cardBorder, width: 0.5)),
       ),
       child: SafeArea(
-        child: SizedBox(
-          height: 56,
-          child: Row(
-            children: [
-              _NavItem(
-                icon: Icons.home_outlined,
-                activeIcon: Icons.home_rounded,
-                label: '홈',
-                isActive: _currentIndex == 0,
-                onTap: () => _changeTab(0),
-              ),
-              _NavItem(
-                icon: Icons.medication_outlined,
-                activeIcon: Icons.medication_rounded,
-                label: '약봉투',
-                isActive: _currentIndex == 1,
-                onTap: () => _changeTab(1),
-              ),
-              _NavItem(
-                icon: Icons.calendar_today_outlined,
-                activeIcon: Icons.calendar_today,
-                label: '캘린더',
-                isActive: _currentIndex == 2,
-                onTap: () => _changeTab(2),
-              ),
-              _NavItem(
-                icon: Icons.compare_arrows_outlined,
-                activeIcon: Icons.compare_arrows_rounded,
-                label: '약 비교', // ③ 탭 이름 변경
-                isActive: _currentIndex == 3,
-                onTap: () => _changeTab(3),
-              ),
-            ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F2FC),
+              borderRadius: BorderRadius.circular(40),
+            ),
+            child: Row(
+              children: [
+                _PillNavItem(
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home_rounded,
+                  label: '홈',
+                  isActive: _currentIndex == 0,
+                  onTap: () => setState(() { _currentIndex = 0; _homeKey++; }),
+                ),
+                _PillNavItem(
+                  icon: Icons.medication_outlined,
+                  activeIcon: Icons.medication_rounded,
+                  label: '약봉투',
+                  isActive: _currentIndex == 1,
+                  onTap: () => setState(() { _currentIndex = 1; _bagKey++; }),
+                ),
+                _PillNavItem(
+                  icon: Icons.calendar_today_outlined,
+                  activeIcon: Icons.calendar_today,
+                  label: '캘린더',
+                  isActive: _currentIndex == 2,
+                  onTap: () => setState(() { _currentIndex = 2; _calKey++; }),
+                ),
+                _PillNavItem(
+                  icon: Icons.compare_arrows_outlined,
+                  activeIcon: Icons.compare_arrows_rounded,
+                  label: '약 비교',
+                  isActive: _currentIndex == 3,
+                  onTap: () => setState(() => _currentIndex = 3),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -253,14 +243,16 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 }
 
-class _NavItem extends StatelessWidget {
+// ─── 알약 탭 아이템 ───────────────────────────────────────────────────────────
+
+class _PillNavItem extends StatelessWidget {
   final IconData icon;
   final IconData activeIcon;
   final String label;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _NavItem({
+  const _PillNavItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
@@ -270,24 +262,46 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive ? AppColors.lavender : AppColors.textHint;
     return Expanded(
-      child: InkWell(
+      flex: isActive ? 2 : 2, // 활성 탭 살짝만 넓게
+      child: GestureDetector(
         onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(isActive ? activeIcon : icon, color: color, size: 22),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 9,
-                color: color,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOut,
+          height: 38,
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.lavender : Colors.transparent,
+            borderRadius: BorderRadius.circular(32),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isActive ? activeIcon : icon,
+                size: 18,
+                color: isActive ? Colors.white : AppColors.textHint,
               ),
-            ),
-          ],
+              // 활성 탭만 라벨 표시
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeInOut,
+                child: isActive
+                    ? Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
         ),
       ),
     );
