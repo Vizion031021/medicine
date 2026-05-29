@@ -110,9 +110,9 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _toggleCompare(DrugInfo drug) async {
     final key = _drugKey(drug);
-    if (_selectedBagDrugs.any((item) => _drugKey(item) == key)) {
+    if (_myDrugs.any((item) => _drugKey(item) == key)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미 선택한 약봉투에 들어있는 약입니다.')),
+        const SnackBar(content: Text('이미 약봉투에 들어있는 약입니다.')),
       );
       return;
     }
@@ -133,7 +133,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _refreshCompareWarnings() async {
     final comparisonDrugs = _comparisonDrugs;
-    if (_extraCompareDrugs.isEmpty || comparisonDrugs.length < 2) {
+    if (comparisonDrugs.length < 2) {
       if (mounted) {
         setState(() {
           _compareWarnings = [];
@@ -157,8 +157,6 @@ class _SearchScreenState extends State<SearchScreen> {
   void _selectBag(String bagId) {
     setState(() {
       _selectedBagId = bagId;
-      _extraCompareDrugs = [];
-      _compareWarnings = [];
     });
   }
 
@@ -184,8 +182,11 @@ class _SearchScreenState extends State<SearchScreen> {
         bagId: _selectedBagId,
       );
 
+  List<DrugInfo> get _myDrugs =>
+      _myMedications.map((med) => med.drug).whereType<DrugInfo>().toList();
+
   List<DrugInfo> get _comparisonDrugs => [
-        ..._selectedBagDrugs,
+        ..._myDrugs,
         ..._extraCompareDrugs,
       ];
 
@@ -243,7 +244,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
             _buildMyMedicationPanel(),
-            if (_selectedBagDrugs.isNotEmpty || _extraCompareDrugs.isNotEmpty)
+            if (_myDrugs.isNotEmpty || _extraCompareDrugs.isNotEmpty)
               _buildComparePanel(),
             Expanded(child: _buildBody()),
           ],
@@ -273,7 +274,7 @@ class _SearchScreenState extends State<SearchScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '비교할 약봉투 선택',
+            '약봉투 분류',
             style: TextStyle(
               fontSize: 11,
               color: AppColors.textHint,
@@ -325,7 +326,7 @@ class _SearchScreenState extends State<SearchScreen> {
             const Padding(
               padding: EdgeInsets.only(top: 6),
               child: Text(
-                '선택한 약봉투에 담긴 약이 없습니다.',
+                '선택한 분류에 담긴 약이 없습니다.',
                 style: TextStyle(fontSize: 10, color: AppColors.textHint),
               ),
             )
@@ -342,7 +343,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                   backgroundColor: AppColors.lavenderBg,
                   side: BorderSide(
-                    color: AppColors.lavender.withValues(alpha: 0.45),
+                    color: AppColors.lavender.withOpacity(0.45),
                   ),
                   labelStyle: const TextStyle(
                     fontSize: 10,
@@ -410,19 +411,22 @@ class _SearchScreenState extends State<SearchScreen> {
         ..._results.map((drug) {
           final key = _drugKey(drug);
           final isInSelectedBag =
-              _selectedBagDrugs.any((item) => _drugKey(item) == key);
+              _myDrugs.any((item) => _drugKey(item) == key);
           final isExtraSelected =
               _extraCompareDrugs.any((item) => _drugKey(item) == key);
           return _DrugResultCard(
             drug: drug,
             isSelected: isInSelectedBag || isExtraSelected,
             isInSelectedBag: isInSelectedBag,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => DrugDetailScreen(drug: drug),
-              ),
-            ),
+            onTap: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DrugDetailScreen(drug: drug),
+                ),
+              );
+              if (mounted) await _loadMyMedications();
+            },
             onCompareTap: () => _toggleCompare(drug),
           );
         }),
@@ -432,7 +436,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildComparePanel() {
     final selectedBag = _selectedBag;
-    final selectedBagDrugs = _selectedBagDrugs;
+    final myDrugs = _myDrugs;
     final hasExtraDrugs = _extraCompareDrugs.isNotEmpty;
 
     return Container(
@@ -452,8 +456,8 @@ class _SearchScreenState extends State<SearchScreen> {
               Expanded(
                 child: Text(
                   selectedBag == null
-                      ? '비교할 약봉투를 선택하세요'
-                      : '기준 약봉투: ${selectedBag.name} (${selectedBagDrugs.length}개)',
+                      ? '약봉투 전체 약 ${myDrugs.length}개'
+                      : '약봉투 전체 약 ${myDrugs.length}개 · 선택 분류: ${selectedBag.name}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -465,10 +469,10 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
               if (hasExtraDrugs)
                 InkWell(
-                  onTap: () => setState(() {
-                    _extraCompareDrugs = [];
-                    _compareWarnings = [];
-                  }),
+                  onTap: () async {
+                    setState(() => _extraCompareDrugs = []);
+                    await _refreshCompareWarnings();
+                  },
                   child: const Text(
                     '추가 선택 초기화',
                     style: TextStyle(fontSize: 11, color: AppColors.lavender),
@@ -476,11 +480,11 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
             ],
           ),
-          if (selectedBagDrugs.isNotEmpty)
+          if (myDrugs.isNotEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 5),
               child: Text(
-                '검색 결과에서 새 약을 선택하면 이 약봉투와 비교합니다.',
+                '등록된 모든 약의 상호작용을 종합하고, 검색 결과에서 새 약을 추가 비교할 수 있습니다.',
                 style: TextStyle(fontSize: 10, color: AppColors.textHint),
               ),
             ),
@@ -503,12 +507,12 @@ class _SearchScreenState extends State<SearchScreen> {
               padding: EdgeInsets.only(top: 6),
               child: LinearProgressIndicator(minHeight: 2),
             ),
-          if (hasExtraDrugs && !_isComparing)
+          if ((myDrugs.length >= 2 || hasExtraDrugs) && !_isComparing)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 _compareWarnings.isEmpty
-                    ? '선택한 약봉투와 새 약 사이에서 DB 기준 확인된 병용금기/성분중복/효능군중복 정보가 없습니다.'
+                    ? '약봉투 전체 약 기준 DB에서 확인된 병용금기/성분중복/효능군중복 정보가 없습니다.'
                     : _compareWarnings.map((warning) => warning.message).join('\n'),
                 style: TextStyle(
                   fontSize: 10,

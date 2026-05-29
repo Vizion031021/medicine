@@ -78,18 +78,12 @@ class DrugService {
   static Future<List<DrugWarning>> compareDrugs(List<DrugInfo> drugs) async {
     if (drugs.length < 2) return [];
 
-    final codes = drugs
-        .map((drug) => drug.displayCode)
-        .where((code) => code.isNotEmpty)
-        .toSet();
-    final ingredientCodes = drugs
-        .map((drug) => drug.ingredientCode)
-        .where((code) => code.isNotEmpty)
-        .toSet();
+    final codes = drugs.expand(_productCodesFor).toSet();
+    final ingredientCodes = drugs.expand(_ingredientCodesFor).toSet();
     final warnings = <DrugWarning>[];
     final seenWarnings = <String>{};
 
-    final duplicateKeys = <String>{};
+    final duplicateBasisByNames = <String, Set<String>>{};
     final ingredientGroups = <String, List<DrugInfo>>{};
     for (final drug in drugs) {
       if (drug.ingredientCode.isEmpty) continue;
@@ -98,10 +92,8 @@ class DrugService {
 
     for (final entry in ingredientGroups.entries) {
       if (entry.value.length < 2) continue;
-      _addDuplicateWarning(
-        warnings: warnings,
-        duplicateKeys: duplicateKeys,
-        title: '동일 성분 중복',
+      _collectDuplicateBasis(
+        duplicateBasisByNames: duplicateBasisByNames,
         basis: '성분코드 ${entry.key}',
         drugs: entry.value,
       );
@@ -115,10 +107,8 @@ class DrugService {
 
     for (final entry in atcGroups.entries) {
       if (entry.value.length < 2) continue;
-      _addDuplicateWarning(
-        warnings: warnings,
-        duplicateKeys: duplicateKeys,
-        title: '동일 계열 중복',
+      _collectDuplicateBasis(
+        duplicateBasisByNames: duplicateBasisByNames,
         basis: 'ATC 코드 ${entry.key}',
         drugs: entry.value,
       );
@@ -133,19 +123,19 @@ class DrugService {
 
     for (final entry in nameGroups.entries) {
       if (entry.value.length < 2) continue;
-      _addDuplicateWarning(
-        warnings: warnings,
-        duplicateKeys: duplicateKeys,
-        title: '유사 제품명 중복',
+      _collectDuplicateBasis(
+        duplicateBasisByNames: duplicateBasisByNames,
         basis: '제품명 기준 ${entry.key}',
         drugs: entry.value,
       );
     }
 
-    final comboRows = await _fetchComboRows(
-      productCodes: codes,
-      ingredientCodes: ingredientCodes,
+    _addDuplicateWarnings(
+      warnings: warnings,
+      duplicateBasisByNames: duplicateBasisByNames,
     );
+
+    final comboRows = await _fetchComboRowsForPairs(drugs);
 
     for (final row in comboRows) {
       final productCode1 = (row['제품코드1'] ?? '').toString();
@@ -154,30 +144,49 @@ class DrugService {
       final ingredientCode2 = (row['성분코드2'] ?? '').toString();
       final productMatched = productCode1.isNotEmpty &&
           productCode2.isNotEmpty &&
-          codes.contains(productCode1) &&
-          codes.contains(productCode2);
+          _hasTwoDrugMatches(
+            drugs: drugs,
+            firstCode: productCode1,
+            secondCode: productCode2,
+            codesForDrug: _productCodesFor,
+          );
       final ingredientMatched = ingredientCode1.isNotEmpty &&
           ingredientCode2.isNotEmpty &&
-          ingredientCodes.contains(ingredientCode1) &&
-          ingredientCodes.contains(ingredientCode2);
+          _hasTwoDrugMatches(
+            drugs: drugs,
+            firstCode: ingredientCode1,
+            secondCode: ingredientCode2,
+            codesForDrug: _ingredientCodesFor,
+          );
 
       if (!productMatched && !ingredientMatched) continue;
 
-      final warningKey = [
-        'combo',
-        productCode1,
-        productCode2,
-        ingredientCode1,
-        ingredientCode2,
-      ].join('|');
+      final pair = ingredientMatched
+          ? [ingredientCode1, ingredientCode2]
+          : [productCode1, productCode2];
+      pair.sort();
+      final reason = (row['금기사유'] ?? '').toString();
+      final warningKey = ['combo', ...pair, reason].join('|');
       if (!seenWarnings.add(warningKey)) continue;
+      final matchedNames = _matchedDrugNamesForCombo(
+        drugs: drugs,
+        productCode1: productCode1,
+        productCode2: productCode2,
+        ingredientCode1: ingredientCode1,
+        ingredientCode2: ingredientCode2,
+        ingredientMatched: ingredientMatched,
+      );
+      final name1 = matchedNames.$1 ??
+          (row['성분명1'] ?? row['제품명1'] ?? '약 1').toString();
+      final name2 = matchedNames.$2 ??
+          (row['성분명2'] ?? row['제품명2'] ?? '약 2').toString();
 
       warnings.add(
         DrugWarning(
           type: DrugWarningType.comboContraindication,
           title: '병용 금기',
           message:
-              '${row['제품명1'] ?? row['성분명1'] ?? '약 1'} + ${row['제품명2'] ?? row['성분명2'] ?? '약 2'}: ${row['금기사유'] ?? 'DB 기준 병용 금기 정보가 있습니다.'}',
+              '$name1 + $name2: ${reason.isEmpty ? 'DB 기준 병용 금기 정보가 있습니다.' : reason}',
           severity: '높음',
           raw: row,
         ),
@@ -223,30 +232,195 @@ class DrugService {
     return warnings;
   }
 
-  static void _addDuplicateWarning({
-    required List<DrugWarning> warnings,
-    required Set<String> duplicateKeys,
-    required String title,
+  static Set<String> _productCodesFor(DrugInfo drug) {
+    return {
+      drug.displayCode,
+      drug.productCode,
+      drug.standardCode,
+      (drug.raw['대표코드'] ?? '').toString(),
+      (drug.raw['표준코드'] ?? '').toString(),
+      (drug.raw['제품코드(개정후)'] ?? '').toString(),
+      (drug.raw['제품코드'] ?? '').toString(),
+    }.where((code) => code.isNotEmpty).toSet();
+  }
+
+  static Set<String> _ingredientCodesFor(DrugInfo drug) {
+    return {
+      drug.ingredientCode,
+      (drug.raw['일반명코드(성분명코드)'] ?? '').toString(),
+      (drug.raw['일반명코드'] ?? '').toString(),
+      (drug.raw['성분명코드'] ?? '').toString(),
+      (drug.raw['성분코드'] ?? '').toString(),
+    }.where((code) => code.isNotEmpty).toSet();
+  }
+
+  static bool _hasTwoDrugMatches({
+    required List<DrugInfo> drugs,
+    required String firstCode,
+    required String secondCode,
+    required Set<String> Function(DrugInfo drug) codesForDrug,
+  }) {
+    for (var i = 0; i < drugs.length; i++) {
+      for (var j = i + 1; j < drugs.length; j++) {
+        final firstDrugCodes = codesForDrug(drugs[i]);
+        final secondDrugCodes = codesForDrug(drugs[j]);
+        final forward = firstDrugCodes.contains(firstCode) &&
+            secondDrugCodes.contains(secondCode);
+        final reverse = firstDrugCodes.contains(secondCode) &&
+            secondDrugCodes.contains(firstCode);
+        if (forward || reverse) return true;
+      }
+    }
+    return false;
+  }
+
+  static (String?, String?) _matchedDrugNamesForCombo({
+    required List<DrugInfo> drugs,
+    required String productCode1,
+    required String productCode2,
+    required String ingredientCode1,
+    required String ingredientCode2,
+    required bool ingredientMatched,
+  }) {
+    final first = drugs.where((drug) {
+      if (ingredientMatched) return _ingredientCodesFor(drug).contains(ingredientCode1);
+      return _productCodesFor(drug).contains(productCode1);
+    }).map((drug) => drug.name).toSet().toList();
+
+    final second = drugs.where((drug) {
+      if (ingredientMatched) return _ingredientCodesFor(drug).contains(ingredientCode2);
+      return _productCodesFor(drug).contains(productCode2);
+    }).map((drug) => drug.name).toSet().toList();
+
+    first.sort();
+    second.sort();
+    return (
+      first.isEmpty ? null : first.join(', '),
+      second.isEmpty ? null : second.join(', '),
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchComboRowsForPairs(
+    List<DrugInfo> drugs,
+  ) async {
+    final rows = <Map<String, dynamic>>[];
+
+    for (var i = 0; i < drugs.length; i++) {
+      for (var j = i + 1; j < drugs.length; j++) {
+        final a = drugs[i];
+        final b = drugs[j];
+        for (final aIngredientCode in _ingredientCodesFor(a)) {
+          for (final bIngredientCode in _ingredientCodesFor(b)) {
+            rows.addAll(await _fetchComboPairRows(
+              column1: '성분코드1',
+              value1: aIngredientCode,
+              column2: '성분코드2',
+              value2: bIngredientCode,
+            ));
+            rows.addAll(await _fetchComboPairRows(
+              column1: '성분코드1',
+              value1: bIngredientCode,
+              column2: '성분코드2',
+              value2: aIngredientCode,
+            ));
+          }
+        }
+        for (final aProductCode in _productCodesFor(a)) {
+          for (final bProductCode in _productCodesFor(b)) {
+            rows.addAll(await _fetchComboPairRows(
+              column1: '제품코드1',
+              value1: aProductCode,
+              column2: '제품코드2',
+              value2: bProductCode,
+            ));
+            rows.addAll(await _fetchComboPairRows(
+              column1: '제품코드1',
+              value1: bProductCode,
+              column2: '제품코드2',
+              value2: aProductCode,
+            ));
+          }
+        }
+      }
+    }
+
+    final deduped = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      final ingredientPair = [
+        (row['성분코드1'] ?? '').toString(),
+        (row['성분코드2'] ?? '').toString(),
+      ]..sort();
+      final productPair = [
+        (row['제품코드1'] ?? '').toString(),
+        (row['제품코드2'] ?? '').toString(),
+      ]..sort();
+      final key = [
+        ingredientPair.where((value) => value.isNotEmpty).join('+'),
+        productPair.where((value) => value.isNotEmpty).join('+'),
+        row['금기사유'],
+      ].join('|');
+      deduped[key] = row;
+    }
+
+    return deduped.values.toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchComboPairRows({
+    required String column1,
+    required String value1,
+    required String column2,
+    required String value2,
+  }) async {
+    if (value1.isEmpty || value2.isEmpty) return [];
+
+    try {
+      final result = await _client
+          .from('combo_contraindicated_drugs')
+          .select()
+          .eq(column1, value1)
+          .eq(column2, value2)
+          .limit(20)
+          .timeout(const Duration(seconds: 6));
+      return (result as List)
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static void _collectDuplicateBasis({
+    required Map<String, Set<String>> duplicateBasisByNames,
     required String basis,
     required List<DrugInfo> drugs,
   }) {
     final names = drugs.map((drug) => drug.name).toSet().toList()..sort();
-    final key = '${names.join('|')}|$title';
-    if (!duplicateKeys.add(key)) return;
+    duplicateBasisByNames
+        .putIfAbsent(names.join('|'), () => <String>{})
+        .add(basis);
+  }
 
-    warnings.add(
-      DrugWarning(
-        type: DrugWarningType.ingredientDuplication,
-        title: title,
-        message:
-            '${names.join(', ')}: $basis 기준으로 같은 성분 또는 같은 계열 약이 중복될 수 있습니다.',
-        severity: '중간',
-        raw: {
-          'basis': basis,
-          'items': drugs.map((drug) => drug.raw).toList(),
-        },
-      ),
-    );
+  static void _addDuplicateWarnings({
+    required List<DrugWarning> warnings,
+    required Map<String, Set<String>> duplicateBasisByNames,
+  }) {
+    for (final entry in duplicateBasisByNames.entries) {
+      final names = entry.key.split('|');
+      final bases = entry.value.toList()..sort();
+      warnings.add(
+        DrugWarning(
+          type: DrugWarningType.ingredientDuplication,
+          title: '성분/계열 중복',
+          message:
+              '${names.join(', ')}: ${bases.join(', ')} 기준으로 중복 복용 가능성이 있습니다.',
+          severity: '중간',
+          raw: {
+            'basis': bases.join(', '),
+            'items': names,
+          },
+        ),
+      );
+    }
   }
 
   static String _normalizedProductFamilyName(String name) {
@@ -259,51 +433,6 @@ class DrugService {
         .replaceAll(RegExp(r'(연질캡슐|서방정|장용정|캡슐|시럽|현탁액|주사|정|액|주)$'), '')
         .replaceAll(RegExp(r'[\s·ㆍ\-_]'), '')
         .trim();
-  }
-
-  static Future<List<Map<String, dynamic>>> _fetchComboRows({
-    required Set<String> productCodes,
-    required Set<String> ingredientCodes,
-  }) async {
-    final rows = <Map<String, dynamic>>[];
-    final querySpecs = <MapEntry<String, List<String>>>[
-      if (productCodes.isNotEmpty) MapEntry('제품코드1', productCodes.toList()),
-      if (productCodes.isNotEmpty) MapEntry('제품코드2', productCodes.toList()),
-      if (ingredientCodes.isNotEmpty)
-        MapEntry('성분코드1', ingredientCodes.toList()),
-      if (ingredientCodes.isNotEmpty)
-        MapEntry('성분코드2', ingredientCodes.toList()),
-    ];
-
-    for (final spec in querySpecs) {
-      try {
-        final result = await _client
-            .from('combo_contraindicated_drugs')
-            .select()
-            .inFilter(spec.key, spec.value)
-            .limit(80)
-            .timeout(const Duration(seconds: 6));
-        for (final raw in result as List) {
-          rows.add(Map<String, dynamic>.from(raw as Map));
-        }
-      } catch (_) {
-        continue;
-      }
-    }
-
-    final deduped = <String, Map<String, dynamic>>{};
-    for (final row in rows) {
-      final key = [
-        row['제품코드1'],
-        row['제품코드2'],
-        row['성분코드1'],
-        row['성분코드2'],
-        row['금기사유'],
-      ].join('|');
-      deduped[key] = row;
-    }
-
-    return deduped.values.toList();
   }
 
   static Future<List<DrugWarning>> _fetchDosageWarnings(

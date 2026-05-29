@@ -66,11 +66,11 @@ class _BagScreenState extends State<BagScreen> {
         }
       }
 
-      final drugs = medications.map((m) => m.drug).whereType<DrugInfo>().toList();
+      final allDrugs = medications.map((m) => m.drug).whereType<DrugInfo>().toList();
       List<DrugWarning> warnings = [];
-      if (drugs.length >= 2) {
+      if (allDrugs.length >= 2) {
         try {
-          warnings = await DrugService.compareDrugs(drugs);
+          warnings = await DrugService.compareDrugs(allDrugs);
         } catch (_) {}
       }
 
@@ -701,18 +701,19 @@ class _BagScreenState extends State<BagScreen> {
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
                           children: [
+                            _OverallWarningPanel(
+                              medicationCount: _medications.length,
+                              warnings: _bagWarnings,
+                            ),
+                            const SizedBox(height: 10),
                             ..._bags.map((bag) {
                               final meds = _medications
                                   .where((m) =>
                                       (_assignments[m.id] ?? 'default') == bag.id)
                                   .toList();
-                              final bagWarnings = _bagWarnings.isNotEmpty && meds.length >= 2
-                                  ? _bagWarnings
-                                  : <DrugWarning>[];
                               return _BagCard(
                                 bag: bag,
                                 medications: meds,
-                                warnings: bagWarnings,
                                 isExpanded: _expanded.contains(bag.id),
                                 onToggle: () => setState(() {
                                   if (_expanded.contains(bag.id)) {
@@ -746,7 +747,6 @@ class _BagScreenState extends State<BagScreen> {
 class _BagCard extends StatelessWidget {
   final BagData bag;
   final List<UserMedication> medications;
-  final List<DrugWarning> warnings;
   final bool isExpanded;
   final VoidCallback onToggle;
   final ValueChanged<UserMedication> onMedTap;
@@ -756,7 +756,6 @@ class _BagCard extends StatelessWidget {
   const _BagCard({
     required this.bag,
     required this.medications,
-    required this.warnings,
     required this.isExpanded,
     required this.onToggle,
     required this.onMedTap,
@@ -801,9 +800,6 @@ class _BagCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // 상태 배지
-                  _StatusBadge(hasWarning: warnings.isNotEmpty),
-                  const SizedBox(width: 6),
                   // 삭제 버튼 (기본 봉투 제외)
                   if (onBagDelete != null)
                     GestureDetector(
@@ -874,32 +870,96 @@ class _BagCard extends StatelessWidget {
                       }).toList(),
                     ),
                   ],
-                  // ── 경고 스트립 ──────────────────────────────────────────
-                  if (warnings.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    ...warnings.take(3).map((w) => _WarningStrip(warning: w)),
-                  ] else if (medications.length >= 2) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.successBg,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.check_circle_outline, color: AppColors.success, size: 13),
-                          SizedBox(width: 5),
-                          Text('현재 DB 기준 확인된 병용 금기 없음',
-                              style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32))),
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _OverallWarningPanel extends StatelessWidget {
+  final int medicationCount;
+  final List<DrugWarning> warnings;
+
+  const _OverallWarningPanel({
+    required this.medicationCount,
+    required this.warnings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasEnoughMeds = medicationCount >= 2;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.cardBorder, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                warnings.isEmpty
+                    ? Icons.check_circle_outline
+                    : Icons.warning_amber_rounded,
+                size: 16,
+                color: warnings.isEmpty ? AppColors.success : AppColors.warning,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '전체 약 상호작용 종합',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: warnings.isEmpty ? AppColors.success : AppColors.danger,
+                  ),
+                ),
+              ),
+              Text(
+                '$medicationCount종',
+                style: const TextStyle(fontSize: 10, color: AppColors.textHint),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (!hasEnoughMeds)
+            const Text(
+              '약이 2개 이상 등록되면 전체 약 기준으로 상호작용을 확인합니다.',
+              style: TextStyle(fontSize: 10, color: AppColors.textHint),
+            )
+          else if (warnings.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: AppColors.successBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle_outline,
+                      color: AppColors.success, size: 14),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '현재 DB 기준 확인된 병용금기/성분중복/효능군중복 정보가 없습니다.',
+                      style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32)),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Column(
+              children: warnings.map((w) => _WarningStrip(warning: w)).toList(),
+            ),
         ],
       ),
     );
@@ -943,30 +1003,6 @@ class _WarningStrip extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final bool hasWarning;
-  const _StatusBadge({required this.hasWarning});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: hasWarning ? AppColors.warningBg : AppColors.successBg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        hasWarning ? '⚠ 주의' : '✓ 확인',
-        style: TextStyle(
-          fontSize: 10,
-          color: hasWarning ? const Color(0xFF854F0B) : const Color(0xFF2E7D32),
-          fontWeight: FontWeight.w600,
-        ),
       ),
     );
   }

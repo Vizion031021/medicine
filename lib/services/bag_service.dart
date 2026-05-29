@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sseudeuson/services/auth_service.dart';
 import 'package:sseudeuson/theme/app_colors.dart';
 
 class BagData {
@@ -36,13 +37,24 @@ class BagData {
 }
 
 class BagService {
-  static const _bagsKey = 'medicine_bags';
-  static const _assignmentsKey = 'medicine_bag_assignments';
+  static const _bagsKeyPrefix = 'medicine_bags';
+  static const _assignmentsKeyPrefix = 'medicine_bag_assignments';
   static const _defaultBag = BagData(id: 'default', name: '내 약봉투');
+
+  static Future<String> _userScope() async {
+    final userId = await AuthService.getCurrentUserId();
+    return userId == null || userId.isEmpty ? 'guest' : userId;
+  }
+
+  static Future<String> _bagsKey() async => '${_bagsKeyPrefix}_${await _userScope()}';
+
+  static Future<String> _assignmentsKey() async =>
+      '${_assignmentsKeyPrefix}_${await _userScope()}';
 
   static Future<List<BagData>> getBags() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_bagsKey);
+    final key = await _bagsKey();
+    final raw = prefs.getString(key);
     final bags = <BagData>[];
 
     if (raw != null && raw.isNotEmpty) {
@@ -61,7 +73,7 @@ class BagService {
           );
         }
       } catch (_) {
-        await prefs.remove(_bagsKey);
+        await prefs.remove(key);
       }
     }
 
@@ -72,7 +84,8 @@ class BagService {
 
   static Future<Map<String, String>> getAssignments() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_assignmentsKey);
+    final key = await _assignmentsKey();
+    final raw = prefs.getString(key);
     if (raw == null || raw.isEmpty) return {};
 
     try {
@@ -82,7 +95,7 @@ class BagService {
         (key, value) => MapEntry(key.toString(), value.toString()),
       );
     } catch (_) {
-      await prefs.remove(_assignmentsKey);
+      await prefs.remove(key);
       return {};
     }
   }
@@ -92,7 +105,7 @@ class BagService {
     final prefs = await SharedPreferences.getInstance();
     final assignments = await getAssignments();
     assignments[medicationId] = bagId.isEmpty ? _defaultBag.id : bagId;
-    await prefs.setString(_assignmentsKey, jsonEncode(assignments));
+    await prefs.setString(await _assignmentsKey(), jsonEncode(assignments));
   }
 
   static Future<void> addBag(String name, int colorIndex) async {
@@ -123,7 +136,7 @@ class BagService {
     assignments.updateAll(
       (_, currentBagId) => currentBagId == bagId ? _defaultBag.id : currentBagId,
     );
-    await prefs.setString(_assignmentsKey, jsonEncode(assignments));
+    await prefs.setString(await _assignmentsKey(), jsonEncode(assignments));
   }
 
   static Future<void> _saveBags(
@@ -138,7 +151,7 @@ class BagService {
       bags.where((bag) => bag.id.isNotEmpty && bag.name.isNotEmpty),
     );
     await prefs.setString(
-      _bagsKey,
+      await _bagsKey(),
       jsonEncode(normalized.map((bag) => bag.toJson()).toList()),
     );
   }

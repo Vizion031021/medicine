@@ -171,6 +171,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _homeKey = 0;
   int _bagKey = 0;
   int _calKey = 0;
+  int _compareKey = 0;
 
   void _changeTab(int index) {
     setState(() {
@@ -185,6 +186,9 @@ class _MainScaffoldState extends State<MainScaffold> {
         case 2:
           _calKey++;
           break;
+        case 3:
+          _compareKey++;
+          break;
       }
     });
   }
@@ -193,7 +197,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     HomeScreen(key: ValueKey(_homeKey), onTabChange: _changeTab),
     BagScreen(key: ValueKey(_bagKey)),
     CalendarScreen(key: ValueKey(_calKey)),
-    const CompareScreen(), // ③ 4번째 탭: 약 비교
+    CompareScreen(key: ValueKey(_compareKey)), // ③ 4번째 탭: 약 비교
   ];
 
   @override
