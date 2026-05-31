@@ -105,56 +105,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // ── 일정별 메모 (SharedPreferences) ────────────────────────────────────────
-
-  Future<void> _loadScheduleMemos() async {
-    final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys().where((k) => k.startsWith('sched_memo_'));
-    final map = <String, String>{};
-    for (final k in keys) {
-      final v = prefs.getString(k) ?? '';
-      if (v.isNotEmpty) map[k.replaceFirst('sched_memo_', '')] = v;
-    }
-    if (mounted) setState(() => _scheduleMemos.addAll(map));
-  }
-
-  Future<void> _saveScheduleMemo(String scheduleId, String content) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('sched_memo_$scheduleId', content);
-    setState(() => _scheduleMemos[scheduleId] = content);
-  }
-
-  Future<void> _deleteScheduleMemo(String scheduleId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('sched_memo_$scheduleId');
-    setState(() => _scheduleMemos.remove(scheduleId));
-  }
-
-  // ── 유틸 ──────────────────────────────────────────────────────────────────
-
-  List<UserSchedule> _schedulesFor(DateTime day) => _schedulesByDay[_dk(day)] ?? [];
-  List<String> _memosFor(DateTime day) => _memosByDay[_dk(day)] ?? [];
-  DateTime _dk(DateTime d) => DateTime(d.year, d.month, d.day);
-
-  /// young 브랜치에서 가져옴: 미래 일정은 복용 체크 불가
+  List<UserSchedule> _schedulesFor(DateTime day) => _schedulesByDay[_dayKey(day)] ?? [];
+  List<String> _memosFor(DateTime day) => _memosByDay[_dayKey(day)] ?? [];
+  DateTime _dayKey(DateTime d) => DateTime(d.year, d.month, d.day);
   bool _canEditTaken(UserSchedule schedule) {
-    final today = _dk(DateTime.now());
-    final scheduleDay = _dk(schedule.date);
+    final today = _dayKey(DateTime.now());
+    final scheduleDay = _dayKey(schedule.date);
     return !scheduleDay.isAfter(today);
   }
 
   String _mealLabel(String time) {
-    final h = int.tryParse(time.split(':').first) ?? 9;
-    if (h < 11) return '아침';
-    if (h < 16) return '점심';
+    final hour = int.tryParse(time.split(':').first) ?? 9;
+    if (hour < 11) return '아침';
+    if (hour < 16) return '점심';
     return '저녁';
   }
 
   Color _mealColor(String meal) {
     switch (meal) {
-      case '아침': return const Color(0xFFEF9F27);
-      case '점심': return AppColors.lavender;
-      default:    return const Color(0xFF4A6FA5);
+      case '아침':
+        return const Color(0xFFEF9F27);
+      case '점심':
+        return AppColors.lavender;
+      default:
+        return const Color(0xFF4A6FA5);
     }
   }
 
@@ -233,28 +207,35 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.only(bottom: 80),
                   children: [
-                    // ── 달력 영역 ──────────────────────────────────────────
-                    if (_isFilterActive && _stripMode)
-                      _buildStripGrid()
-                    else if (_isFilterActive)
-                      _buildHorizontalStrip()
+                    // 필터 활성화 → 날짜 스트립 / 비활성화 → 전체 달력
+                    if (_isFilterActive)
+                      _buildFilteredDateStrip()
                     else
                       Container(
                         color: Colors.white,
-                        child: Column(children: [_buildCalendar(), _buildLegend()]),
+                        child: Column(
+                          children: [_buildCalendar(), _buildLegend()],
+                        ),
                       ),
                     const Divider(height: 0.5, color: AppColors.cardBorder),
-                    // ── 일정 영역 ──────────────────────────────────────────
                     if (_isLoading)
                       const Padding(
                         padding: EdgeInsets.only(top: 48),
-                        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       )
                     else if (_errorMessage != null)
                       Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text(_errorMessage!, textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+                        child: Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.danger,
+                          ),
+                        ),
                       )
                     else
                       Padding(
@@ -264,7 +245,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           children: [
                             _buildDayHeader(),
                             const SizedBox(height: 8),
-                            ..._buildGroupedScheduleCards(),
+                            ..._buildScheduleCards(),
                             ..._buildMemoCards(),
                             const SizedBox(height: 8),
                             _buildMemoButton(),
@@ -497,10 +478,52 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             : isToday ? AppColors.lavenderBorder : AppColors.cardBorder,
                         width: isSelected ? 0 : 0.5,
                       ),
-                      boxShadow: isSelected ? [BoxShadow(
-                        color: AppColors.lavender.withOpacity(0.25),
-                        blurRadius: 6, offset: const Offset(0, 2),
-                      )] : null,
+                      boxShadow: isSelected
+                          ? [BoxShadow(
+                              color: AppColors.lavender.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2))]
+                          : null,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // 요일
+                        Text(
+                          _dowLabel(day),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isSelected
+                                ? Colors.white.withOpacity(0.85)
+                                : day.weekday == 7 || day.weekday == 6
+                                    ? AppColors.danger.withOpacity(0.7)
+                                    : AppColors.textHint,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        // 날짜
+                        Text(
+                          '${day.day}',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: isSelected ? Colors.white : AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        // 상태 점
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (hasTaken) _statusDot(AppColors.success),
+                            if (hasMissed) _statusDot(AppColors.danger),
+                            if (hasMemo) _statusDot(
+                              isSelected ? Colors.white.withOpacity(0.8) : AppColors.lavender,
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                       Text(_dowLabel(day), style: TextStyle(fontSize: 9,
@@ -530,10 +553,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _sDot(Color color) => Container(
-    width: 5, height: 5, margin: const EdgeInsets.symmetric(horizontal: 1),
-    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-  );
+  Widget _statusDot(Color color) {
+    return Container(
+      width: 5, height: 5,
+      margin: const EdgeInsets.symmetric(horizontal: 1),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
 
   // ── 풀 달력 ──────────────────────────────────────────────────────────────
 
@@ -631,46 +657,160 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return [const _EmptyCard(text: '이 날의 복약 일정이 없습니다.')];
     }
 
-    // 봉투별 그룹화
-    final bagGroups = <String, List<UserSchedule>>{};
-    for (final s in schedules) {
-      final med = s.medication;
-      final bagId = med != null ? (_assignments[med.id] ?? 'default') : 'default';
-      bagGroups.putIfAbsent(bagId, () => []).add(s);
-    }
-
-    // 봉투 순서 정렬
-    final orderedBagIds = [..._bagOrder]
-      ..retainWhere(bagGroups.containsKey);
-    for (final id in bagGroups.keys) {
-      if (!orderedBagIds.contains(id)) orderedBagIds.add(id);
-    }
-
-    return orderedBagIds.map((bagId) {
-      final group = bagGroups[bagId]!;
-      BagData? bag;
-      try { bag = _bags.firstWhere((b) => b.id == bagId); } catch (_) {}
-      return _BagScheduleGroup(
-        bag: bag,
-        schedules: group,
-        scheduleMemos: _scheduleMemos,
-        mealLabel: _mealLabel,
-        mealColor: _mealColor,
-        fmtTime: _fmtTime,
-        canEditTaken: _canEditTaken,
-        onToggle: (s) async {
-          if (!_canEditTaken(s)) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('미래 복용 일정은 당일이 되면 체크할 수 있습니다.')));
-            return;
-          }
-          await ScheduleService.setTaken(scheduleId: s.id, isTaken: !s.isTaken);
-          await _loadMonth();
-        },
-        onMemoSave: _saveScheduleMemo,
-        onMemoDelete: _deleteScheduleMemo,
-      );
+    final mealOrder = ['아침', '점심', '저녁'];
+    return mealOrder.map((meal) {
+      final items = schedules.where((s) => _mealLabel(s.time) == meal).toList()
+        ..sort((a, b) => a.time.compareTo(b.time));
+      return _buildScheduleMealSection(meal, items);
     }).toList();
+  }
+
+  Widget _buildScheduleMealSection(String meal, List<UserSchedule> schedules) {
+    final color = _mealColor(meal);
+    final done = schedules.where((s) => s.isTaken).length;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.cardBorder, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  meal,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '$done/${schedules.length}',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textHint,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (schedules.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  '예정된 복약 일정이 없습니다.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textHint),
+                ),
+              )
+            else
+              Column(
+                children: List.generate(schedules.length, (i) {
+                  return _buildScheduleTile(
+                    schedules[i],
+                    isLast: i == schedules.length - 1,
+                    color: color,
+                  );
+                }),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScheduleTile(
+    UserSchedule schedule, {
+    required bool isLast,
+    required Color color,
+  }) {
+    final med = schedule.medication;
+    final drug = med?.drug;
+    final name = med?.displayName ?? '등록 약';
+    final canEditTaken = _canEditTaken(schedule);
+
+    return Column(
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              margin: const EdgeInsets.only(top: 6),
+              decoration: BoxDecoration(
+                color: schedule.isTaken ? AppColors.success : AppColors.danger,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    [schedule.time, if (drug?.company.isNotEmpty == true) drug!.company].join(' · '),
+                    style: const TextStyle(fontSize: 10, color: AppColors.textHint),
+                  ),
+                  if (med?.instruction.isNotEmpty == true) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      med!.instruction,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, color: color),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: canEditTaken ? () => _toggleTaken(schedule) : null,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+              ),
+              child: Text(
+                canEditTaken ? (schedule.isTaken ? '취소' : '복용') : '예정',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: canEditTaken
+                      ? (schedule.isTaken ? AppColors.textHint : AppColors.lavender)
+                      : AppColors.textHint,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (!isLast)
+          const Divider(height: 18, color: AppColors.cardBorder),
+      ],
+    );
   }
 
   // ── 날짜 메모 ────────────────────────────────────────────────────────────
@@ -858,7 +998,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   // ── 액션 ─────────────────────────────────────────────────────────────────
 
-  Future<void> _saveDateMemo() async {
+  Future<void> _toggleTaken(UserSchedule schedule) async {
+    if (!_canEditTaken(schedule)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('미래 복용 일정은 당일이 되면 체크할 수 있습니다.')),
+      );
+      return;
+    }
+    await ScheduleService.setTaken(scheduleId: schedule.id, isTaken: !schedule.isTaken);
+    await _loadMonth();
+  }
+
+  Future<void> _saveMemo() async {
     final content = _memoController.text.trim();
     if (content.isEmpty) return;
     try {

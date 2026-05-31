@@ -102,10 +102,10 @@ class MedicationService {
     await _client
         .from('user_medications')
         .update({
-      'custom_name': customName,
-      'instruction': instruction,
-      'updated_at': DateTime.now().toIso8601String(),
-    })
+          'custom_name': customName,
+          'instruction': instruction,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
         .eq('id', medication.id)
         .eq('user_id', userId);
 
