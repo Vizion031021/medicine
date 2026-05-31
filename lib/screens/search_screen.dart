@@ -231,12 +231,12 @@ class _SearchScreenState extends State<SearchScreen> {
                       ),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.close, size: 16),
-                              onPressed: () {
-                                _searchController.clear();
-                                _search('');
-                              },
-                            )
+                        icon: const Icon(Icons.close, size: 16),
+                        onPressed: () {
+                          _searchController.clear();
+                          _search('');
+                        },
+                      )
                           : null,
                     ),
                   ),

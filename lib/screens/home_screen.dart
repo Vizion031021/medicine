@@ -679,8 +679,8 @@ class _SeasonPainter extends CustomPainter {
 
   void _drawCelestial(Canvas canvas, Size size) {
     final W = size.width, H = size.height;
-    final cx = {DayPeriod.morning:W*0.82,DayPeriod.afternoon:W*0.78,DayPeriod.evening:W*0.12,DayPeriod.night:W*0.82}[period]!;
-    final cy = {DayPeriod.morning:H*0.5,DayPeriod.afternoon:H*0.16,DayPeriod.evening:H*0.72,DayPeriod.night:H*0.2}[period]!;
+    final cx = {DayPeriod.morning:W*0.82,DayPeriod.afternoon:W*0.78,DayPeriod.evening:W*0.14,DayPeriod.night:W*0.82}[period]!;
+    final cy = {DayPeriod.morning:H*0.5,DayPeriod.afternoon:H*0.16,DayPeriod.evening:H*0.60,DayPeriod.night:H*0.2}[period]!;
 
     if (period == DayPeriod.night) {
       canvas.drawCircle(Offset(cx, cy), 24, Paint()..color = const Color(0xFFC8D0F0));
@@ -815,7 +815,7 @@ class _SeasonPainter extends CustomPainter {
     final greetTp = TextPainter(
       text: TextSpan(
         text: period.greeting,
-        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: textColor),
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: textColor, letterSpacing: -0.3),
       ),
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: size.width - 32);
@@ -828,7 +828,7 @@ class _SeasonPainter extends CustomPainter {
           : const Color(0xFF7B6FD4).withOpacity(0.18);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(12, size.height * 0.84, size.width - 24, 26),
+          Rect.fromLTWH(14, size.height * 0.855, size.width - 80, 20),
           const Radius.circular(8),
         ),
         Paint()..color = alertBg,
@@ -836,19 +836,19 @@ class _SeasonPainter extends CustomPainter {
       final alertTp = TextPainter(
         text: TextSpan(
           children: [
-            TextSpan(text: '💊 ', style: TextStyle(fontSize: 11, color: textColor)),
+            TextSpan(text: '💊 ', style: TextStyle(fontSize: 9, color: textColor)),
             TextSpan(
               text: '복용해야 할 약이 있습니다!',
               style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w700,
+                fontSize: 9, fontWeight: FontWeight.w700,
                 color: isNight ? const Color(0xFFD0C8FF) : const Color(0xFF4A3FA8),
               ),
             ),
           ],
         ),
         textDirection: TextDirection.ltr,
-      )..layout(maxWidth: size.width - 36);
-      alertTp.paint(canvas, Offset(20, size.height * 0.848));
+      )..layout(maxWidth: size.width - 90);
+      alertTp.paint(canvas, Offset(20, size.height * 0.862));
     }
   }
 

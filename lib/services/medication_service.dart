@@ -59,12 +59,12 @@ class MedicationService {
     final inserted = await _client
         .from('user_medications')
         .insert({
-          'user_id': userId,
-          'product_code': code,
-          'is_active': true,
-          'custom_name': customName,
-          'instruction': instruction,
-        })
+      'user_id': userId,
+      'product_code': code,
+      'is_active': true,
+      'custom_name': customName,
+      'instruction': instruction,
+    })
         .select()
         .single();
 

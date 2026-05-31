@@ -212,9 +212,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: AppColors.cardBorder, width: 0.5),
-        ),
+        border: Border(top: BorderSide(color: AppColors.cardBorder, width: 0.5)),
       ),
       child: SafeArea(
         child: SizedBox(
@@ -257,14 +255,16 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 }
 
-class _NavItem extends StatelessWidget {
+// ─── 알약 탭 아이템 ───────────────────────────────────────────────────────────
+
+class _PillNavItem extends StatelessWidget {
   final IconData icon;
   final IconData activeIcon;
   final String label;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _NavItem({
+  const _PillNavItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
@@ -274,24 +274,46 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive ? AppColors.lavender : AppColors.textHint;
     return Expanded(
-      child: InkWell(
+      flex: isActive ? 2 : 2, // 활성 탭 살짝만 넓게
+      child: GestureDetector(
         onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(isActive ? activeIcon : icon, color: color, size: 22),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 9,
-                color: color,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOut,
+          height: 38,
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.lavender : Colors.transparent,
+            borderRadius: BorderRadius.circular(32),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isActive ? activeIcon : icon,
+                size: 18,
+                color: isActive ? Colors.white : AppColors.textHint,
               ),
-            ),
-          ],
+              // 활성 탭만 라벨 표시
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeInOut,
+                child: isActive
+                    ? Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
         ),
       ),
     );

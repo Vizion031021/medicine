@@ -628,20 +628,20 @@ class _BagScreenState extends State<BagScreen> {
                       prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.lavender),
                       suffixIcon: _isSearching
                           ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ))
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ))
                           : _searchCtrl.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.close, size: 16),
-                                  onPressed: () {
-                                    _searchCtrl.clear();
-                                    setState(() => _searchResults = []);
-                                  })
-                              : null,
+                          ? IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() => _searchResults = []);
+                          })
+                          : null,
                     ),
                   ),
                   if (_searchResults.isNotEmpty)
@@ -658,7 +658,7 @@ class _BagScreenState extends State<BagScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         itemCount: _searchResults.length,
                         separatorBuilder: (_, __) =>
-                            const Divider(height: 0.5, indent: 14, endIndent: 14),
+                        const Divider(height: 0.5, indent: 14, endIndent: 14),
                         itemBuilder: (ctx, i) {
                           final drug = _searchResults[i];
                           return ListTile(
@@ -668,7 +668,7 @@ class _BagScreenState extends State<BagScreen> {
                                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                             subtitle: Text(
                               '${drug.prescriptionType.isEmpty ? '' : '${drug.prescriptionType} · '}'
-                              '${drug.formType.isEmpty ? drug.company : drug.formType}',
+                                  '${drug.formType.isEmpty ? drug.company : drug.formType}',
                               style: const TextStyle(fontSize: 10),
                             ),
                             trailing: const Icon(Icons.add_circle_outline,
@@ -735,6 +735,44 @@ class _BagScreenState extends State<BagScreen> {
                           ],
                         ),
                       ),
+                      child: const Row(children: [
+                        Icon(Icons.check_circle_outline, color: AppColors.success, size: 14),
+                        SizedBox(width: 6),
+                        Text('현재 DB 기준 확인된 병용 금기 없음',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF2E7D32))),
+                      ]),
+                    ),
+                  // ── 봉투 목록 ────────────────────────────────────
+                  ..._bags.map((bag) {
+                    final meds = _medications
+                        .where((m) =>
+                    (_assignments[m.id] ?? 'default') == bag.id)
+                        .toList();
+                    return _BagCard(
+                      bag: bag,
+                      medications: meds,
+                      warnings: const [],   // 봉투별 경고 제거
+                      isExpanded: _expanded.contains(bag.id),
+                      onToggle: () => setState(() {
+                        if (_expanded.contains(bag.id)) {
+                          _expanded.remove(bag.id);
+                        } else {
+                          _expanded.add(bag.id);
+                        }
+                      }),
+                      onMedTap: (med) => _showEditMedicationDialog(med),
+                      onMedDelete: _removeMedication,
+                      onBagDelete: bag.id == 'default'
+                          ? null
+                          : () async {
+                        await BagService.removeBag(bag.id);
+                        await _load();
+                      },
+                    );
+                  }),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -1107,6 +1145,54 @@ class _EditDateButton extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── 날짜 선택 버튼 ───────────────────────────────────────────────────────────
+
+class _EditDateBtn extends StatelessWidget {
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  const _EditDateBtn({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.lavenderBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.lavenderBorder, width: 0.7),
+        ),
+        child: Row(
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textHint,
+                    fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.lavenderDark,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(width: 4),
+            const Icon(Icons.calendar_today_outlined,
+                size: 13, color: AppColors.lavender),
           ],
         ),
       ),
