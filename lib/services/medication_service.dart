@@ -59,12 +59,12 @@ class MedicationService {
     final inserted = await _client
         .from('user_medications')
         .insert({
-      'user_id': userId,
-      'product_code': code,
-      'is_active': true,
-      'custom_name': customName,
-      'instruction': instruction,
-    })
+          'user_id': userId,
+          'product_code': code,
+          'is_active': true,
+          'custom_name': customName,
+          'instruction': instruction,
+        })
         .select()
         .single();
 
@@ -86,6 +86,7 @@ class MedicationService {
     return medication;
   }
 
+  // [young] 복용 설정 수정 (기존 일정 삭제 후 재생성)
   static Future<void> updateMedicationSettings({
     required UserMedication medication,
     required String customName,
@@ -109,6 +110,7 @@ class MedicationService {
         .eq('id', medication.id)
         .eq('user_id', userId);
 
+    // 기존 일정 soft delete
     final now = DateTime.now().toIso8601String();
     await _client
         .from('user_schedules')
@@ -117,6 +119,7 @@ class MedicationService {
         .eq('user_id', userId)
         .isFilter('deleted_at', null);
 
+    // 새 일정 생성
     await _createDefaultSchedules(
       userId: userId,
       medicationId: medication.id,
@@ -175,9 +178,7 @@ class MedicationService {
     if (ruleRows.isNotEmpty) {
       try {
         await _client.from('medication_rules').insert(ruleRows);
-      } catch (_) {
-        // 발표 데모에서는 복약 일정 생성을 우선한다. 규칙 저장 실패가 약봉투 저장을 막지 않게 둔다.
-      }
+      } catch (_) {}
     }
   }
 
@@ -271,8 +272,8 @@ class ScheduleService {
       final times = _timesFromInstruction(instruction);
       final bounds = await _fetchBounds(userId: userId, medicationId: medId);
 
-      final effFrom = bounds == null || fromDay.isAfter(bounds.$1) ? fromDay : bounds.$1;
-      final effTo = bounds == null || toDay.isBefore(bounds.$2) ? toDay : bounds.$2;
+      final effFrom = bounds == null || fromDay.isAfter(bounds[0]) ? fromDay : bounds[0];
+      final effTo = bounds == null || toDay.isBefore(bounds[1]) ? toDay : bounds[1];
       if (effTo.isBefore(effFrom)) continue;
 
       final existing = await _client
@@ -290,7 +291,7 @@ class ScheduleService {
         final date = DateTime.tryParse((s['schedule_date'] ?? '').toString());
         final time = (s['schedule_time'] ?? '').toString();
         if (date == null || time.isEmpty) continue;
-        existingKeys.add('${_dateStr(date)}|$time');
+        existingKeys.add('${_ds(date)}|$time');
       }
 
       final rows = <Map<String, dynamic>>[];
@@ -299,7 +300,7 @@ class ScheduleService {
         if (d >= effDays) break;
         final date = DateTime(effFrom.year, effFrom.month, effFrom.day + d);
         for (final time in times) {
-          if (existingKeys.contains('${_dateStr(date)}|$time')) continue;
+          if (existingKeys.contains('${_ds(date)}|$time')) continue;
           rows.add({
             'user_id': userId,
             'user_medication_id': medId,
@@ -322,7 +323,7 @@ class ScheduleService {
     return times;
   }
 
-  static Future<(DateTime, DateTime)?> _fetchBounds({
+  static Future<List<DateTime>?> _fetchBounds({
     required String userId,
     required String medicationId,
   }) async {
@@ -334,8 +335,7 @@ class ScheduleService {
         .isFilter('deleted_at', null)
         .order('schedule_date');
 
-    DateTime? minDate;
-    DateTime? maxDate;
+    DateTime? minDate, maxDate;
     for (final raw in rows as List) {
       final row = Map<String, dynamic>.from(raw as Map);
       final date = DateTime.tryParse((row['schedule_date'] ?? '').toString());
@@ -345,11 +345,11 @@ class ScheduleService {
       if (maxDate == null || day.isAfter(maxDate)) maxDate = day;
     }
     if (minDate == null || maxDate == null) return null;
-    return (minDate, maxDate);
+    return [minDate, maxDate];
   }
 
-  static String _dateStr(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  static String _ds(DateTime d) =>
+      '${d.year.toString().padLeft(4,'0')}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
 
   static Future<UserMedication?> _fetchMedication(String medicationId) async {
     if (medicationId.isEmpty) return null;
@@ -380,8 +380,8 @@ class CalendarMemoService {
         .from('calendar_memos')
         .select()
         .eq('user_id', userId)
-        .gte('memo_date', _dateStr(from))
-        .lte('memo_date', _dateStr(to))
+        .gte('memo_date', _ds(from))
+        .lte('memo_date', _ds(to))
         .order('memo_date');
 
     return (rows as List)
@@ -397,11 +397,11 @@ class CalendarMemoService {
     if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
     await _client.from('calendar_memos').insert({
       'user_id': userId,
-      'memo_date': _dateStr(date),
+      'memo_date': _ds(date),
       'content': content,
     });
   }
 
-  static String _dateStr(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  static String _ds(DateTime d) =>
+      '${d.year.toString().padLeft(4,'0')}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
 }
