@@ -55,9 +55,9 @@ class _SearchScreenState extends State<SearchScreen> {
       final results = await DrugService.searchDrugs(query);
       if (!mounted) return;
       setState(() => _results = results);
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _errorMessage = '약 검색 실패: $error');
+      setState(() => _errorMessage = '약 검색 결과를 불러오지 못했습니다.\n잠시 후 다시 시도해 주세요.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -166,7 +166,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 controller: _searchController,
                 onChanged: _onSearchChanged,
                 decoration: InputDecoration(
-                  hintText: '상품명, 업체명, 표준코드 검색',
+                  hintText: '상품명 또는 업체명 검색',
                   prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.lavender),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
@@ -332,8 +332,10 @@ class _SearchScreenState extends State<SearchScreen> {
           Padding(padding: const EdgeInsets.only(top: 6),
               child: Text(
                 _compareWarnings.isEmpty
-                    ? '약봉투 전체 약 기준 DB에서 확인된 병용금기/성분중복/효능군중복 정보가 없습니다.'
-                    : _compareWarnings.map((w) => w.message).join('\n'),
+                    ? '현재 함께 복용 시 주의가 필요한 조합은 확인되지 않았습니다.'
+                    : _compareWarnings
+                        .map((w) => '${w.title}: ${w.message}')
+                        .join('\n'),
                 style: TextStyle(fontSize: 10,
                     color: _compareWarnings.isEmpty ? AppColors.success : AppColors.danger,
                     height: 1.4),

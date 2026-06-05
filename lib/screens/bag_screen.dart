@@ -82,8 +82,10 @@ class _BagScreenState extends State<BagScreen> {
         _bagWarnings = warnings;
         if (_expanded.isEmpty && bags.isNotEmpty) _expanded.add(bags.first.id);
       });
-    } catch (e) {
-      if (mounted) setState(() => _errorMsg = '약봉투 조회 실패: $e');
+    } catch (_) {
+      if (mounted) {
+        setState(() => _errorMsg = '약봉투를 불러오지 못했습니다.\n잠시 후 다시 시도해 주세요.');
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -270,6 +272,11 @@ class _BagScreenState extends State<BagScreen> {
     final nameCtrl = TextEditingController(text: med.displayName);
     final slots = _slotsFromInstruction(med.instruction);
     var mealTiming = med.instruction.contains('식전') ? '식전' : '식후';
+    var mealOffsetMinutes = _offsetFromInstruction(med.instruction);
+    var useCustomOffset = !const [0, 30, 60].contains(mealOffsetMinutes);
+    final offsetCtrl = TextEditingController(
+      text: useCustomOffset ? mealOffsetMinutes.toString() : '',
+    );
     var dates = _datesFromInstruction(med.instruction);
     var startDate = dates[0];
     var endDate = dates[1];
@@ -364,6 +371,60 @@ class _BagScreenState extends State<BagScreen> {
                   ),
                 )).toList()),
                 const SizedBox(height: 12),
+                const Text('복용 간격', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  _SmallChoiceChip(
+                    label: '즉시',
+                    selected: !useCustomOffset && mealOffsetMinutes == 0,
+                    onTap: () => setInner(() {
+                      useCustomOffset = false;
+                      mealOffsetMinutes = 0;
+                      offsetCtrl.clear();
+                    }),
+                  ),
+                  _SmallChoiceChip(
+                    label: '30분',
+                    selected: !useCustomOffset && mealOffsetMinutes == 30,
+                    onTap: () => setInner(() {
+                      useCustomOffset = false;
+                      mealOffsetMinutes = 30;
+                      offsetCtrl.clear();
+                    }),
+                  ),
+                  _SmallChoiceChip(
+                    label: '1시간',
+                    selected: !useCustomOffset && mealOffsetMinutes == 60,
+                    onTap: () => setInner(() {
+                      useCustomOffset = false;
+                      mealOffsetMinutes = 60;
+                      offsetCtrl.clear();
+                    }),
+                  ),
+                  _SmallChoiceChip(
+                    label: '기타',
+                    selected: useCustomOffset,
+                    onTap: () => setInner(() {
+                      useCustomOffset = true;
+                      mealOffsetMinutes = int.tryParse(offsetCtrl.text.trim()) ?? 0;
+                    }),
+                  ),
+                ]),
+                if (useCustomOffset) ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: offsetCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      hintText: '원하는 시간 입력 (분 단위)',
+                      suffixText: '분',
+                    ),
+                    onChanged: (value) => setInner(() {
+                      mealOffsetMinutes = int.tryParse(value.trim()) ?? 0;
+                    }),
+                  ),
+                ],
+                const SizedBox(height: 12),
                 const Text('복용 기간', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                 const SizedBox(height: 8),
                 Wrap(spacing: 6, runSpacing: 6, children: () {
@@ -408,31 +469,40 @@ class _BagScreenState extends State<BagScreen> {
       ),
     );
 
-    if (result != true) { nameCtrl.dispose(); return; }
+    if (result != true) { nameCtrl.dispose(); offsetCtrl.dispose(); return; }
     try {
       final sortedSlots = slots.toList()..sort((a, b) => _slotHour(a).compareTo(_slotHour(b)));
-      final instruction = '${sortedSlots.join(', ')} $mealTiming 복용 · ${_fmtDt(startDate)}~${_fmtDt(endDate)}';
+      final offset = (useCustomOffset
+              ? int.tryParse(offsetCtrl.text.trim()) ?? mealOffsetMinutes
+              : mealOffsetMinutes)
+          .clamp(0, 180)
+          .toInt();
+      final instruction = '${sortedSlots.join(', ')} $mealTiming ${_offsetLabel(offset)} 복용 · ${_fmtDt(startDate)}~${_fmtDt(endDate)}';
       await MedicationService.updateMedicationSettings(
         medication: med,
         customName: nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : med.displayName,
         instruction: instruction,
         durationDays: endDate.difference(startDate).inDays + 1,
         startDate: startDate, endDate: endDate,
-        scheduleTimes: sortedSlots.map(_slotTime).toList(),
+        scheduleTimes: sortedSlots.map((slot) => _slotTime(slot, mealTiming, offset)).toList(),
         mealTimingLabel: mealTiming,
+        mealOffsetMinutes: offset,
       );
       nameCtrl.dispose();
+      offsetCtrl.dispose();
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${med.displayName} 복용 설정을 수정했습니다.'),
         backgroundColor: AppColors.lavender,
       ));
-    } catch (e) {
+    } catch (_) {
       nameCtrl.dispose();
+      offsetCtrl.dispose();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('수정 실패: $e'), backgroundColor: AppColors.danger));
+          content: const Text('복용 설정을 저장하지 못했습니다. 다시 시도해 주세요.'),
+          backgroundColor: AppColors.danger));
     }
   }
 
@@ -469,7 +539,27 @@ class _BagScreenState extends State<BagScreen> {
     return 9;
   }
 
-  String _slotTime(String slot) => '${_slotHour(slot).toString().padLeft(2, '0')}:00:00';
+  int _offsetFromInstruction(String instruction) {
+    if (instruction.contains('즉시')) return 0;
+    if (instruction.contains('1시간')) return 60;
+    final match = RegExp(r'(\d+)분').firstMatch(instruction);
+    if (match == null) return 0;
+    return int.tryParse(match.group(1) ?? '') ?? 0;
+  }
+
+  String _offsetLabel(int minutes) {
+    if (minutes <= 0) return '즉시';
+    if (minutes == 60) return '1시간';
+    return '$minutes분';
+  }
+
+  String _slotTime(String slot, String mealTiming, int offsetMinutes) {
+    final direction = mealTiming == '식전' ? -1 : 1;
+    final time = DateTime(2026, 1, 1, _slotHour(slot))
+        .add(Duration(minutes: direction * offsetMinutes));
+    return '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}:00';
+  }
 
   // ── 약물 삭제 ─────────────────────────────────────────────────────────────
 
@@ -493,17 +583,30 @@ class _BagScreenState extends State<BagScreen> {
     );
     if (confirm != true) return;
     try {
-      await MedicationService.deactivateMedication(med.id);
+      await MedicationService.deactivateMedication(
+        med.id,
+        productCode: med.productCode,
+      );
+      _assignments.remove(med.id);
+      setState(() {
+        _medications.removeWhere(
+          (item) => item.id == med.id || item.productCode == med.productCode,
+        );
+        _bagWarnings = [];
+      });
       await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${med.displayName} 삭제됨')),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('삭제 실패: $e'), backgroundColor: AppColors.danger),
+          const SnackBar(
+            content: Text('약을 약봉투에서 빼지 못했습니다. 다시 시도해 주세요.'),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     }
@@ -568,7 +671,7 @@ class _BagScreenState extends State<BagScreen> {
                     onChanged: _onSearchChanged,
                     autofocus: true,
                     decoration: InputDecoration(
-                      hintText: '상품명, 업체명, 표준코드로 약물 검색',
+                      hintText: '상품명 또는 업체명으로 약물 검색',
                       prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.lavender),
                       suffixIcon: _isSearching
                           ? const Padding(
@@ -895,11 +998,11 @@ class _OverallWarningPanel extends StatelessWidget {
             Expanded(child: Text('전체 약 상호작용 종합',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
                     color: warnings.isEmpty ? AppColors.success : AppColors.danger))),
-            if (high.isNotEmpty) _Badge(label: '고위험 ${high.length}건', color: AppColors.danger, bg: AppColors.dangerBg),
+            if (high.isNotEmpty) _Badge(label: '확인 필요 ${high.length}건', color: AppColors.danger, bg: AppColors.dangerBg),
             if (high.isNotEmpty && mid.isNotEmpty) const SizedBox(width: 4),
-            if (mid.isNotEmpty) _Badge(label: '중위험 ${mid.length}건', color: AppColors.warning, bg: AppColors.warningBg),
+            if (mid.isNotEmpty) _Badge(label: '주의 ${mid.length}건', color: AppColors.warning, bg: AppColors.warningBg),
             const SizedBox(width: 6),
-            Text('\$medicationCount종', style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
+            Text('$medicationCount종', style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
           ]),
           const SizedBox(height: 8),
           if (!hasEnoughMeds)
@@ -912,7 +1015,7 @@ class _OverallWarningPanel extends StatelessWidget {
               child: const Row(children: [
                 Icon(Icons.check_circle_outline, color: AppColors.success, size: 14),
                 SizedBox(width: 6),
-                Expanded(child: Text('현재 DB 기준 확인된 병용금기/성분중복/효능군중복 정보가 없습니다.',
+                Expanded(child: Text('현재 함께 복용 시 주의가 필요한 조합은 확인되지 않았습니다.',
                     style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32)))),
               ]),
             )
@@ -961,7 +1064,7 @@ class _ExpandableWarningListState extends State<_ExpandableWarningList> {
           decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8),
               border: Border.all(color: color.withOpacity(0.2), width: 0.5)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${w.title} · 위험도 ${w.severity}',
+            Text(w.isHighRisk ? '${w.title} · 확인 필요' : '${w.title} · 주의',
                 style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
             Text(widget.enrichMessage(w.message),
@@ -1014,7 +1117,7 @@ class _WarningStrip extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${warning.title} · 위험도 ${warning.severity}',
+                Text(warning.isHighRisk ? '${warning.title} · 확인 필요' : '${warning.title} · 주의',
                     style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(warning.message,
@@ -1046,6 +1149,45 @@ class _StatusBadge extends StatelessWidget {
           fontSize: 10,
           color: hasWarning ? const Color(0xFF854F0B) : const Color(0xFF2E7D32),
           fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _SmallChoiceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SmallChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.lavender : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? AppColors.lavender : AppColors.lavenderBorder,
+            width: 0.7,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: selected ? Colors.white : AppColors.lavenderDark,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );

@@ -23,11 +23,14 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
   late final Future<String> _ingredientNameFuture;
   final Set<_MealSlot> _selectedSlots = {_MealSlot.breakfast};
   _MealTiming _mealTiming = _MealTiming.after;
+  int _mealOffsetMinutes = 0;
+  bool _useCustomOffset = false;
   late DateTime _startDate;
   late DateTime _endDate;
   int _selectedPresetDays = 7;
   bool _isSaving = false;
   late final TextEditingController _customNameController;
+  late final TextEditingController _customOffsetController;
 
   @override
   void initState() {
@@ -37,15 +40,15 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     final now = DateTime.now();
     _startDate = DateTime(now.year, now.month, now.day);
     _endDate = DateTime(now.year, now.month, now.day + 6);
-    final defaultName = widget.drug.name.length > 20
-        ? widget.drug.name.substring(0, 20)
-        : widget.drug.name;
+    final defaultName = _defaultDisplayName(widget.drug.name);
     _customNameController = TextEditingController(text: defaultName);
+    _customOffsetController = TextEditingController();
   }
 
   @override
   void dispose() {
     _customNameController.dispose();
+    _customOffsetController.dispose();
     super.dispose();
   }
 
@@ -90,10 +93,6 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
               children: [
                 _InfoRow(label: '한글상품명', value: drug.name),
                 _InfoRow(label: '업체명', value: drug.company),
-                _InfoRow(label: '제품코드', value: drug.productCode),
-                _InfoRow(label: '표준코드', value: drug.standardCode),
-                _InfoRow(label: '성분명코드', value: drug.ingredientCode),
-                _InfoRow(label: 'ATC 코드', value: drug.atcCode),
                 _InfoRow(label: '전문/일반', value: drug.prescriptionType),
                 _InfoRow(label: '제형', value: drug.formType),
                 _InfoRow(label: '규격', value: drug.specification),
@@ -112,8 +111,10 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
               builder: (context, snapshot) {
                 final name = snapshot.data ?? '';
                 final label = name.isNotEmpty
-                    ? '$name (${drug.ingredientCode})'
-                    : drug.ingredientLabel;
+                    ? name
+                    : (drug.ingredientName.isNotEmpty
+                        ? drug.ingredientName
+                        : '성분 정보 없음');
                 return Text(
                   label,
                   style: const TextStyle(
@@ -148,9 +149,9 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                   icon: Icons.error_outline,
                   iconColor: AppColors.danger,
                   title: '주의 정보',
-                  child: Text(
-                    '주의 정보 조회 실패: ${snapshot.error}',
-                    style: const TextStyle(
+                  child: const Text(
+                    '주의 정보를 불러오지 못했습니다.\n잠시 후 다시 시도해 주세요.',
+                    style: TextStyle(
                         fontSize: 11, color: AppColors.danger),
                   ),
                 );
@@ -162,9 +163,7 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                   iconColor: AppColors.success,
                   title: '주의 정보',
                   child: Text(
-                    '제품코드 ${drug.displayCode.isEmpty ? '-' : drug.displayCode} /'
-                    ' 성분코드 ${drug.ingredientCode.isEmpty ? '-' : drug.ingredientCode}'
-                    ' 기준으로 조회된 주요 주의 정보가 없습니다.',
+                    '현재 확인된 주요 주의 정보가 없습니다.',
                     style: const TextStyle(
                         fontSize: 11, color: AppColors.textHint, height: 1.5),
                   ),
@@ -252,6 +251,75 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                       ),
                     );
                   }).toList(),
+                ),
+
+                const SizedBox(height: 14),
+
+                const _SettingLabel('복용 간격'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _ChoiceChip(
+                      label: '즉시',
+                      isSelected: !_useCustomOffset && _mealOffsetMinutes == 0,
+                      onTap: () => setState(() {
+                        _useCustomOffset = false;
+                        _mealOffsetMinutes = 0;
+                        _customOffsetController.clear();
+                      }),
+                    ),
+                    _ChoiceChip(
+                      label: '30분',
+                      isSelected: !_useCustomOffset && _mealOffsetMinutes == 30,
+                      onTap: () => setState(() {
+                        _useCustomOffset = false;
+                        _mealOffsetMinutes = 30;
+                        _customOffsetController.clear();
+                      }),
+                    ),
+                    _ChoiceChip(
+                      label: '1시간',
+                      isSelected: !_useCustomOffset && _mealOffsetMinutes == 60,
+                      onTap: () => setState(() {
+                        _useCustomOffset = false;
+                        _mealOffsetMinutes = 60;
+                        _customOffsetController.clear();
+                      }),
+                    ),
+                    _ChoiceChip(
+                      label: '기타',
+                      isSelected: _useCustomOffset,
+                      onTap: () => setState(() {
+                        _useCustomOffset = true;
+                        _mealOffsetMinutes =
+                            int.tryParse(_customOffsetController.text.trim()) ?? 0;
+                      }),
+                    ),
+                  ],
+                ),
+                if (_useCustomOffset) ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _customOffsetController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      hintText: '원하는 시간 입력 (분 단위)',
+                      suffixText: '분',
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _mealOffsetMinutes = int.tryParse(value.trim()) ?? 0;
+                      });
+                    },
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                  _mealOffsetDescription,
+                  style: const TextStyle(
+                      fontSize: 10, color: AppColors.textHint, height: 1.4),
                 ),
 
                 const SizedBox(height: 14),
@@ -378,21 +446,24 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
     try {
       final slots = _selectedSlots.toList()
         ..sort((a, b) => a.hour.compareTo(b.hour));
+      final offset = _normalizedOffsetMinutes;
       final instruction =
-          '${slots.map((s) => s.label).join(', ')} ${_mealTiming.label} 복용 · '
+          '${slots.map((s) => s.label).join(', ')} ${_mealTiming.label} '
+          '${_offsetLabel(offset)} 복용 · '
           '${_fmtDate(_startDate)}~${_fmtDate(_endDate)}';
 
       final medication = await MedicationService.addMedication(
         drug: widget.drug,
         customName: _customNameController.text.trim().isNotEmpty
             ? _customNameController.text.trim()
-            : widget.drug.name,
+            : _defaultDisplayName(widget.drug.name),
         instruction: instruction,
         durationDays: _durationDays,
         startDate: _startDate,
         endDate: _endDate,
-        scheduleTimes: slots.map((s) => s.scheduleTime).toList(),
+        scheduleTimes: slots.map((s) => _scheduleTimeFor(s, offset)).toList(),
         mealTimingLabel: _mealTiming.label,
+        mealOffsetMinutes: offset,
       );
 
       // 봉투 할당
@@ -429,11 +500,11 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
       }
 
       Navigator.pop(context);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('약봉투 저장 실패: $e'),
+        const SnackBar(
+          content: Text('약봉투에 저장하지 못했습니다. 다시 시도해 주세요.'),
           backgroundColor: AppColors.danger,
         ),
       );
@@ -493,13 +564,13 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                   _DialogInfoRow(
                     icon: Icons.schedule_outlined,
                     text: _selectedSlots
-                        .map((s) => '${s.label} ${s.timeText}')
+                        .map((s) => '${s.label} ${_displayTimeFor(s, _normalizedOffsetMinutes)}')
                         .join(' · '),
                   ),
                   const SizedBox(height: 4),
                   _DialogInfoRow(
                     icon: Icons.restaurant_outlined,
-                    text: _mealTiming.label,
+                    text: '${_mealTiming.label} ${_offsetLabel(_normalizedOffsetMinutes)}',
                   ),
                 ],
               ),
@@ -593,6 +664,49 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
 
   String _fmtDate(DateTime d) =>
       '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
+
+  String _defaultDisplayName(String name) {
+    final openParenIndex = name.indexOf('(');
+    final withoutParentheses = openParenIndex >= 0
+        ? name.substring(0, openParenIndex)
+        : name;
+    final normalized = withoutParentheses
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (normalized.length <= 20) return normalized;
+    return normalized.substring(0, 20);
+  }
+
+  int get _normalizedOffsetMinutes {
+    final raw = _useCustomOffset
+        ? int.tryParse(_customOffsetController.text.trim()) ?? _mealOffsetMinutes
+        : _mealOffsetMinutes;
+    return raw.clamp(0, 180).toInt();
+  }
+
+  String get _mealOffsetDescription {
+    final offset = _normalizedOffsetMinutes;
+    final label = _offsetLabel(offset);
+    if (offset == 0) return '선택한 시간대에 바로 복용 일정이 생성됩니다.';
+    return '${_mealTiming.label} $label 기준으로 복용 일정 시간이 계산됩니다.';
+  }
+
+  String _offsetLabel(int minutes) {
+    if (minutes <= 0) return '즉시';
+    if (minutes == 60) return '1시간';
+    return '$minutes분';
+  }
+
+  String _scheduleTimeFor(_MealSlot slot, int offsetMinutes) {
+    final direction = _mealTiming == _MealTiming.before ? -1 : 1;
+    final time = DateTime(2026, 1, 1, slot.hour)
+        .add(Duration(minutes: direction * offsetMinutes));
+    return '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}:00';
+  }
+
+  String _displayTimeFor(_MealSlot slot, int offsetMinutes) =>
+      _scheduleTimeFor(slot, offsetMinutes).substring(0, 5);
 }
 
 // ─── 다이얼로그 정보 행 ───────────────────────────────────────────────────────
@@ -856,7 +970,7 @@ class _WarningTile extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: color)),
             const Spacer(),
-            Text(warning.severity,
+            Text(warning.isHighRisk ? '확인 필요' : '주의',
                 style: TextStyle(fontSize: 10, color: color)),
           ]),
           const SizedBox(height: 6),

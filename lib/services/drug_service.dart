@@ -6,16 +6,20 @@ class DrugService {
 
   static Future<List<DrugInfo>> searchDrugs(String query, {int limit = 30}) async {
     final trimmed = query.trim();
-    dynamic request = _client.from('drug_standard_codes').select();
+    dynamic request = _client
+        .from('drug_standard_codes')
+        .select()
+        .eq('제품총수량', 0);
     if (trimmed.isNotEmpty) {
       final escaped = trimmed.replaceAll(',', ' ');
-      request = request.or('한글상품명.ilike.%$escaped%,업체명.ilike.%$escaped%');
+      request = request.ilike('search_text', '%$escaped%');
     }
-    final rows = await request.limit(limit);
-    return (rows as List)
+    final rows = await request.order('한글상품명').limit(limit * 4);
+    final drugs = (rows as List)
         .map((row) => DrugInfo.fromJson(Map<String, dynamic>.from(row as Map)))
         .where((drug) => drug.name.isNotEmpty)
         .toList();
+    return _dedupeDrugsByName(drugs).take(limit).toList();
   }
 
   static Future<DrugInfo?> findByProductCode(String productCode) async {
@@ -30,6 +34,25 @@ class DrugService {
       } catch (_) { continue; }
     }
     return null;
+  }
+
+  static List<DrugInfo> _dedupeDrugsByName(List<DrugInfo> drugs) {
+    final seenNames = <String>{};
+    final result = <DrugInfo>[];
+    for (final drug in drugs) {
+      final key = drug.name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+      if (key.isEmpty || !seenNames.add(key)) continue;
+      result.add(drug);
+    }
+    return result;
+  }
+
+  static String _firstRowValue(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      final value = (row[key] ?? '').toString().trim();
+      if (value.isNotEmpty) return value;
+    }
+    return '';
   }
 
   // ── fetchWarnings ─────────────────────────────────────────────────────────
@@ -75,7 +98,7 @@ class DrugService {
       if (entry.value.length < 2) continue;
       _collectDuplicateBasis(
         duplicateBasisByNames: duplicateBasisByNames,
-        basis: '성분코드 ${entry.key}',
+        basis: 'same_ingredient',
         drugs: entry.value,
       );
     }
@@ -89,7 +112,7 @@ class DrugService {
       if (entry.value.length < 2) continue;
       _collectDuplicateBasis(
         duplicateBasisByNames: duplicateBasisByNames,
-        basis: 'ATC 코드 ${entry.key}',
+        basis: 'same_group',
         drugs: entry.value,
       );
     }
@@ -104,7 +127,7 @@ class DrugService {
       if (entry.value.length < 2) continue;
       _collectDuplicateBasis(
         duplicateBasisByNames: duplicateBasisByNames,
-        basis: '제품명 기준 ${entry.key}',
+        basis: 'similar_name',
         drugs: entry.value,
       );
     }
@@ -131,18 +154,10 @@ class DrugService {
       final wKey = ['combo', ...pair, reason].join('|');
       if (!seenWarnings.add(wKey)) continue;
 
-      final names = _matchedDrugNamesForCombo(
-        drugs: drugs,
-        productCode1: pc1, productCode2: pc2,
-        ingredientCode1: ic1, ingredientCode2: ic2,
-        ingredientMatched: ingredientMatched,
-      );
-      final n1 = names[0] ?? (row['성분명1'] ?? row['제품명1'] ?? '약 1').toString();
-      final n2 = names[1] ?? (row['성분명2'] ?? row['제품명2'] ?? '약 2').toString();
       warnings.add(DrugWarning(
         type: DrugWarningType.comboContraindication,
-        title: '병용 금기',
-        message: '$n1 + $n2: ${reason.isEmpty ? 'DB 기준 병용 금기 정보가 있습니다.' : reason}',
+        title: '함께 복용 주의',
+        message: '함께 복용할 때 주의가 필요한 조합입니다. 복용 전 의사 또는 약사와 상담해 주세요.',
         severity: '높음',
         raw: row,
       ));
@@ -168,8 +183,8 @@ class DrugService {
           if ((groupCodes[entry.key] ?? {}).length > 1) {
             warnings.add(DrugWarning(
               type: DrugWarningType.efficacyDuplication,
-              title: '효능군 중복주의',
-              message: '${entry.key} 계열 약이 중복될 수 있습니다.',
+              title: '비슷한 효과의 약 중복',
+              message: '비슷한 효과를 가진 약이 함께 등록되어 있습니다. 같은 목적으로 중복 복용하지 않도록 확인해 주세요.',
               severity: '중간',
               raw: {'효능군': entry.key, 'items': entry.value},
             ));
@@ -218,23 +233,6 @@ class DrugService {
       }
     }
     return false;
-  }
-
-  static List<String?> _matchedDrugNamesForCombo({
-    required List<DrugInfo> drugs,
-    required String productCode1, required String productCode2,
-    required String ingredientCode1, required String ingredientCode2,
-    required bool ingredientMatched,
-  }) {
-    final first = drugs.where((d) => ingredientMatched
-        ? _ingredientCodesFor(d).contains(ingredientCode1)
-        : _productCodesFor(d).contains(productCode1))
-        .map((d) => d.name).toSet().toList()..sort();
-    final second = drugs.where((d) => ingredientMatched
-        ? _ingredientCodesFor(d).contains(ingredientCode2)
-        : _productCodesFor(d).contains(productCode2))
-        .map((d) => d.name).toSet().toList()..sort();
-    return [first.isEmpty ? null : first.join(', '), second.isEmpty ? null : second.join(', ')];
   }
 
   static Future<List<Map<String, dynamic>>> _fetchComboRowsForPairs(
@@ -307,12 +305,28 @@ class DrugService {
       final bases = entry.value.toList()..sort();
       warnings.add(DrugWarning(
         type: DrugWarningType.ingredientDuplication,
-        title: '성분/계열 중복',
-        message: '${names.join(', ')}: ${bases.join(', ')} 기준으로 중복 복용 가능성이 있습니다.',
+        title: _duplicateTitle(bases),
+        message: _duplicateMessage(bases),
         severity: '중간',
         raw: {'basis': bases.join(', '), 'items': names},
       ));
     }
+  }
+
+  static String _duplicateTitle(List<String> bases) {
+    if (bases.contains('same_ingredient')) return '같은 성분의 약 중복';
+    if (bases.contains('same_group')) return '같은 계열의 약 중복';
+    return '비슷한 약 이름 중복';
+  }
+
+  static String _duplicateMessage(List<String> bases) {
+    if (bases.contains('same_ingredient')) {
+      return '같은 성분이 들어간 약이 함께 등록되어 있습니다. 중복 복용하지 않도록 복용 전 확인해 주세요.';
+    }
+    if (bases.contains('same_group')) {
+      return '비슷한 작용을 하는 약이 함께 등록되어 있습니다. 효과나 부작용이 겹칠 수 있어 주의가 필요합니다.';
+    }
+    return '이름이 비슷한 약이 함께 등록되어 있습니다. 같은 약을 중복으로 담은 것은 아닌지 확인해 주세요.';
   }
 
   static String _normalizedProductFamilyName(String name) {
@@ -333,11 +347,38 @@ class DrugService {
     final rows = await _selectByProductOrIngredient(
         table: 'dosage_warning_drugs',
         productCode: productCode, ingredientCode: ingredientCode);
-    return rows.map((row) => DrugWarning(
-      type: DrugWarningType.dosage, title: '용량 주의',
-      message: '${drug.name} 1일 최대 투여량: ${row['1일최대투여량'] ?? row['1일최대 투여기준량'] ?? ''}',
-      severity: '중간', raw: row,
-    )).toList();
+    return rows.map((row) {
+      final ingredient = _firstRowValue(row, const [
+        '성분명',
+        '일반명',
+        '주성분',
+        '성분명칭',
+      ]);
+      final checkDose = _firstRowValue(row, const [
+        '점검기준 성분함량 (총함량)',
+        '점검기준투여량',
+        '점검 기준 투여량',
+        '점검기준 투여량',
+        '점검기준투여용량',
+      ]);
+      final maxDailyDose = _firstRowValue(row, const [
+        '1일최대투여기준량',
+        '1일최대 투여기준량',
+        '1일최대투여량',
+        '1일 최대 투여량',
+      ]);
+      final ingredientLabel = ingredient.isEmpty ? '성분 정보 없음' : ingredient;
+      return DrugWarning(
+        type: DrugWarningType.dosage,
+        title: '용량 주의',
+        message: '하루 복용량이 기준을 넘지 않도록 주의가 필요합니다.\n'
+            '관련 성분: $ingredientLabel\n'
+            '점검 기준 투여량: ${checkDose.isEmpty ? '-' : checkDose}\n'
+            '1일 최대 투여기준량: ${maxDailyDose.isEmpty ? '-' : maxDailyDose}',
+        severity: '중간',
+        raw: row,
+      );
+    }).toList();
   }
 
   static Future<List<DrugWarning>> _fetchDurationWarnings(
@@ -347,7 +388,8 @@ class DrugService {
         productCode: productCode, ingredientCode: ingredientCode);
     return rows.map((row) => DrugWarning(
       type: DrugWarningType.duration, title: '투여기간 주의',
-      message: '${drug.name} 최대 투여기간: ${row['최대투여기간일수'] ?? '-'}일',
+      message: '권장 복용 기간을 넘기지 않도록 주의가 필요합니다.\n'
+          '최대 투여기간: ${row['최대투여기간일수'] ?? '-'}일',
       severity: '중간', raw: row,
     )).toList();
   }
@@ -358,8 +400,8 @@ class DrugService {
         table: 'efficacy_dup_warnings',
         productCode: productCode, ingredientCode: ingredientCode);
     return rows.map((row) => DrugWarning(
-      type: DrugWarningType.efficacyDuplication, title: '효능군 중복주의',
-      message: '${row['효능군'] ?? '같은 효능군'} 계열 중복 복용에 주의하세요.',
+      type: DrugWarningType.efficacyDuplication, title: '비슷한 효과의 약 중복',
+      message: '비슷한 효과를 가진 약이 함께 등록되어 있습니다. 같은 목적으로 중복 복용하지 않도록 확인해 주세요.',
       severity: '중간', raw: row,
     )).toList();
   }
@@ -370,8 +412,8 @@ class DrugService {
         table: 'pregnancy_contraindicated_drugs',
         productCode: productCode, ingredientCode: ingredientCode);
     return rows.map((row) => DrugWarning(
-      type: DrugWarningType.pregnancy, title: '임부 금기',
-      message: '${drug.name} 금기등급: ${row['금기등급'] ?? '-'} / ${row['상세정보'] ?? ''}',
+      type: DrugWarningType.pregnancy, title: '임신 중 복용 주의',
+      message: '임신 중이거나 임신 가능성이 있는 경우 주의가 필요한 약입니다. 복용 전 의사 또는 약사와 상담해 주세요.',
       severity: '높음', raw: row,
     )).toList();
   }
@@ -400,7 +442,10 @@ class DrugService {
     switch (w.type) {
       case DrugWarningType.dosage:
         return [w.type.name, r['성분코드'], r['성분명'],
-            r['1일최대투여량'], r['1일최대 투여기준량']].join('|');
+            r['점검기준 성분함량 (총함량)'],
+            r['점검기준투여량'], r['점검 기준 투여량'],
+            r['1일최대투여기준량'], r['1일최대투여량'],
+            r['1일최대 투여기준량']].join('|');
       case DrugWarningType.duration:
         return [w.type.name, r['성분코드'], r['성분명'], r['최대투여기간일수']].join('|');
       case DrugWarningType.efficacyDuplication:

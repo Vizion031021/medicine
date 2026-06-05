@@ -98,8 +98,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _schedulesByDay..clear()..addAll(ns);
         _memosByDay..clear()..addAll(nm);
       });
-    } catch (e) {
-      if (mounted) setState(() => _errorMessage = '캘린더 조회 실패: $e');
+    } catch (_) {
+      if (mounted) {
+        setState(() => _errorMessage = '캘린더를 불러오지 못했습니다.\n잠시 후 다시 시도해 주세요.');
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -866,10 +868,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _memoController.clear();
       setState(() => _showMemoInput = false);
       await _loadMonth();
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('메모 저장 실패: $e'), backgroundColor: AppColors.danger));
+          const SnackBar(
+              content: Text('메모를 저장하지 못했습니다. 다시 시도해 주세요.'),
+              backgroundColor: AppColors.danger));
     }
   }
 }

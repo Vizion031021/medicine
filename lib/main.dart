@@ -13,9 +13,41 @@ import 'package:sseudeuson/services/auth_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
-  if (SupabaseConfig.anonKey.isEmpty) throw StateError('SUPABASE_ANON_KEY is not set.');
+  if (SupabaseConfig.anonKey.isEmpty) {
+    runApp(const _ConfigErrorApp());
+    return;
+  }
   await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey);
   runApp(const SseudeusOnApp());
+}
+
+class _ConfigErrorApp extends StatelessWidget {
+  const _ConfigErrorApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              '앱 설정을 불러오지 못했습니다.\n관리자에게 문의해 주세요.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.5,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class SseudeusOnApp extends StatelessWidget {
@@ -77,11 +109,23 @@ class SseudeusOnApp extends StatelessWidget {
           ),
         ),
       ),
-      home: FutureBuilder<bool>(
-        future: AuthService.isLoggedIn(),
+      // 🌟 변경된 부분: FutureBuilder -> StreamBuilder
+      home: StreamBuilder<AuthState>(
+        // Supabase의 실시간 인증 상태 변화를 구독합니다.
+        stream: Supabase.instance.client.auth.onAuthStateChange,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const _SplashScreen();
-          if (snapshot.data == true) return const MainScaffold();
+          // 아직 스트림 연결을 기다리는 아주 짧은 찰나의 로딩 상태
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const _SplashScreen();
+          }
+
+          // 데이터가 들어왔을 때 세션(JWT 토큰)이 유효한지 확인합니다.
+          final session = snapshot.data?.session;
+          if (session != null) {
+            return const MainScaffold(); // 로그인 성공/유지 상태
+          }
+
+          // 세션이 없거나 로그아웃 상태면 무조건 로그인 화면으로 보냅니다.
           return const LoginScreen();
         },
       ),
@@ -219,10 +263,10 @@ class _PillNavItem extends StatelessWidget {
                 curve: Curves.easeInOut,
                 child: isActive
                     ? Padding(
-                        padding: const EdgeInsets.only(left: 4),
-                        child: Text(label, style: const TextStyle(
-                            fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white)),
-                      )
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Text(label, style: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white)),
+                )
                     : const SizedBox.shrink(),
               ),
             ],

@@ -39,6 +39,7 @@ class MedicationService {
     DateTime? endDate,
     List<String> scheduleTimes = const ['08:00:00'],
     String mealTimingLabel = '식후',
+    int mealOffsetMinutes = 0,
   }) async {
     final userId = await AuthService.getCurrentUserId();
     if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
@@ -81,6 +82,7 @@ class MedicationService {
       endDate: endDate,
       scheduleTimes: scheduleTimes,
       mealTimingLabel: mealTimingLabel,
+      mealOffsetMinutes: mealOffsetMinutes,
     );
 
     return medication;
@@ -96,6 +98,7 @@ class MedicationService {
     required DateTime endDate,
     required List<String> scheduleTimes,
     required String mealTimingLabel,
+    required int mealOffsetMinutes,
   }) async {
     final userId = await AuthService.getCurrentUserId();
     if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
@@ -128,6 +131,7 @@ class MedicationService {
       endDate: endDate,
       scheduleTimes: scheduleTimes,
       mealTimingLabel: mealTimingLabel,
+      mealOffsetMinutes: mealOffsetMinutes,
     );
   }
 
@@ -139,6 +143,7 @@ class MedicationService {
     required DateTime? endDate,
     required List<String> scheduleTimes,
     required String mealTimingLabel,
+    required int mealOffsetMinutes,
   }) async {
     final today = DateTime.now();
     final start = _dateOnly(startDate ?? today);
@@ -168,7 +173,7 @@ class MedicationService {
             'rule_type': 'MEAL',
             'base_event': _baseEvent(time),
             'timing': timing,
-            'offset_minutes': 0,
+            'offset_minutes': mealOffsetMinutes,
           });
         }
       }
@@ -191,16 +196,51 @@ class MedicationService {
     return 'DINNER';
   }
 
-  static Future<void> deactivateMedication(String medicationId) async {
+  static Future<void> deactivateMedication(
+    String medicationId, {
+    String productCode = '',
+  }) async {
+    final userId = await AuthService.getCurrentUserId();
+    if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
+
     final now = DateTime.now().toIso8601String();
-    await _client
+    final targetIds = <String>{};
+    if (medicationId.isNotEmpty) targetIds.add(medicationId);
+
+    if (productCode.isNotEmpty) {
+      final rows = await _client
+          .from('user_medications')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('product_code', productCode)
+          .eq('is_active', true);
+      for (final raw in rows as List) {
+        final row = Map<String, dynamic>.from(raw as Map);
+        final id = (row['id'] ?? '').toString();
+        if (id.isNotEmpty) targetIds.add(id);
+      }
+    }
+
+    if (targetIds.isEmpty) {
+      throw StateError('약봉투에서 제거할 약을 찾지 못했습니다.');
+    }
+
+    dynamic request = _client
         .from('user_medications')
         .update({'is_active': false})
-        .eq('id', medicationId);
+        .eq('user_id', userId);
+    if (targetIds.length == 1) {
+      request = request.eq('id', targetIds.first);
+    } else {
+      request = request.inFilter('id', targetIds.toList());
+    }
+
+    await request;
+
     await _client
         .from('user_schedules')
         .update({'deleted_at': now})
-        .eq('user_medication_id', medicationId);
+        .inFilter('user_medication_id', targetIds.toList());
   }
 }
 
@@ -316,11 +356,29 @@ class ScheduleService {
 
   static List<String> _timesFromInstruction(String instruction) {
     final times = <String>[];
-    if (instruction.contains('아침')) times.add('09:00:00');
-    if (instruction.contains('점심')) times.add('12:00:00');
-    if (instruction.contains('저녁')) times.add('18:00:00');
-    if (times.isEmpty) times.add('09:00:00');
+    final offset = _offsetFromInstruction(instruction);
+    final isBefore = instruction.contains('식전');
+    if (instruction.contains('아침')) times.add(_timeWithOffset(9, isBefore, offset));
+    if (instruction.contains('점심')) times.add(_timeWithOffset(12, isBefore, offset));
+    if (instruction.contains('저녁')) times.add(_timeWithOffset(18, isBefore, offset));
+    if (times.isEmpty) times.add(_timeWithOffset(9, isBefore, offset));
     return times;
+  }
+
+  static int _offsetFromInstruction(String instruction) {
+    if (instruction.contains('즉시')) return 0;
+    if (instruction.contains('1시간')) return 60;
+    final match = RegExp(r'(\d+)분').firstMatch(instruction);
+    if (match == null) return 0;
+    return int.tryParse(match.group(1) ?? '') ?? 0;
+  }
+
+  static String _timeWithOffset(int hour, bool isBefore, int offsetMinutes) {
+    final direction = isBefore ? -1 : 1;
+    final time = DateTime(2026, 1, 1, hour)
+        .add(Duration(minutes: direction * offsetMinutes.clamp(0, 180).toInt()));
+    return '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}:00';
   }
 
   static Future<List<DateTime>?> _fetchBounds({
