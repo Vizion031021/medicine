@@ -444,73 +444,111 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
   Future<void> _addToBag() async {
     setState(() => _isSaving = true);
     try {
-      final slots = _selectedSlots.toList()
-        ..sort((a, b) => a.hour.compareTo(b.hour));
-      final offset = _normalizedOffsetMinutes;
-      final instruction =
-          '${slots.map((s) => s.label).join(', ')} ${_mealTiming.label} '
-          '${_offsetLabel(offset)} 복용 · '
-          '${_fmtDate(_startDate)}~${_fmtDate(_endDate)}';
-
-      final medication = await MedicationService.addMedication(
-        drug: widget.drug,
-        customName: _customNameController.text.trim().isNotEmpty
-            ? _customNameController.text.trim()
-            : _defaultDisplayName(widget.drug.name),
-        instruction: instruction,
-        durationDays: _durationDays,
-        startDate: _startDate,
-        endDate: _endDate,
-        scheduleTimes: slots.map((s) => _scheduleTimeFor(s, offset)).toList(),
-        mealTimingLabel: _mealTiming.label,
-        mealOffsetMinutes: offset,
-      );
-
-      // 봉투 할당
-      final bagId = widget.targetBagId ?? 'default';
-      await BagService.assignMedication(medication.id, bagId);
-
-      if (!mounted) return;
-
-      // ── 캘린더 생성 여부 다이얼로그 ────────────────────────────────────
-      final createCalendar = await _showCalendarDialog();
-
-      if (!mounted) return;
-
-      if (createCalendar == true) {
-        // 이미 MedicationService.addMedication에서 user_schedules를 생성함
-        // 캘린더 탭으로 안내 스낵바
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${widget.drug.name} 복용 일정이 캘린더에 추가되었습니다.\n'
-              '${_fmtDate(_startDate)} ~ ${_fmtDate(_endDate)}',
-            ),
-            backgroundColor: AppColors.lavender,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('내 약봉투에 저장했습니다.'),
-            backgroundColor: AppColors.lavender,
-          ),
-        );
+      await _saveToBag(allowDuplicate: false);
+    } on DuplicateMedicationException {
+      if (mounted) setState(() => _isSaving = false);
+      final confirmed = await _showDuplicateMedicationDialog();
+      if (confirmed != true || !mounted) return;
+      setState(() => _isSaving = true);
+      try {
+        await _saveToBag(allowDuplicate: true);
+      } catch (_) {
+        _showSaveFailureSnack();
       }
-
-      Navigator.pop(context);
     } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('약봉투에 저장하지 못했습니다. 다시 시도해 주세요.'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
+      _showSaveFailureSnack();
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  Future<void> _saveToBag({required bool allowDuplicate}) async {
+    final slots = _selectedSlots.toList()
+      ..sort((a, b) => a.hour.compareTo(b.hour));
+    final offset = _normalizedOffsetMinutes;
+    final instruction =
+        '${slots.map((s) => s.label).join(', ')} ${_mealTiming.label} '
+        '${_offsetLabel(offset)} 복용 · '
+        '${_fmtDate(_startDate)}~${_fmtDate(_endDate)}';
+
+    final medication = await MedicationService.addMedication(
+      drug: widget.drug,
+      customName: _customNameController.text.trim().isNotEmpty
+          ? _customNameController.text.trim()
+          : _defaultDisplayName(widget.drug.name),
+      instruction: instruction,
+      durationDays: _durationDays,
+      startDate: _startDate,
+      endDate: _endDate,
+      scheduleTimes: slots.map((s) => _scheduleTimeFor(s, offset)).toList(),
+      mealTimingLabel: _mealTiming.label,
+      mealOffsetMinutes: offset,
+      allowDuplicate: allowDuplicate,
+    );
+
+    final bagId = widget.targetBagId ?? 'default';
+    await BagService.assignMedication(medication.id, bagId);
+
+    if (!mounted) return;
+
+    final createCalendar = await _showCalendarDialog();
+
+    if (!mounted) return;
+
+    if (createCalendar == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${widget.drug.name} 복용 일정이 캘린더에 추가되었습니다.\n'
+            '${_fmtDate(_startDate)} ~ ${_fmtDate(_endDate)}',
+          ),
+          backgroundColor: AppColors.lavender,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('내 약봉투에 저장했습니다.'),
+          backgroundColor: AppColors.lavender,
+        ),
+      );
+    }
+
+    Navigator.pop(context);
+  }
+
+  Future<bool?> _showDuplicateMedicationDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('이미 담긴 약입니다'),
+        content: const Text(
+          '약봉투에 같은 약이 이미 있습니다. 그래도 추가할까요?\n'
+          '같은 약을 중복 복용하지 않도록 주의해 주세요.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('아니오'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('예'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSaveFailureSnack() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('약봉투에 저장하지 못했습니다. 다시 시도해 주세요.'),
+        backgroundColor: AppColors.danger,
+      ),
+    );
   }
 
   // ── 캘린더 생성 여부 다이얼로그 ──────────────────────────────────────────

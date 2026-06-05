@@ -89,6 +89,20 @@ class DrugService {
     // 성분/ATC/제품명 중복 체크
     final duplicateBasisByNames = <String, Set<String>>{};
 
+    final productGroups = <String, List<DrugInfo>>{};
+    for (final drug in drugs) {
+      if (drug.displayCode.isEmpty) continue;
+      productGroups.putIfAbsent(drug.displayCode, () => []).add(drug);
+    }
+    for (final entry in productGroups.entries) {
+      if (entry.value.length < 2) continue;
+      _collectDuplicateBasis(
+        duplicateBasisByNames: duplicateBasisByNames,
+        basis: 'same_product',
+        drugs: entry.value,
+      );
+    }
+
     final ingredientGroups = <String, List<DrugInfo>>{};
     for (final drug in drugs) {
       if (drug.ingredientCode.isEmpty) continue;
@@ -132,6 +146,19 @@ class DrugService {
       );
     }
     _addDuplicateWarnings(warnings: warnings, duplicateBasisByNames: duplicateBasisByNames);
+
+    final individualWarnings = await Future.wait<List<DrugWarning>>(
+      drugs.map((drug) {
+        final pc = drug.displayCode;
+        final ic = drug.ingredientCode;
+        return Future.wait<List<DrugWarning>>([
+          _safeWarnings(() => _fetchDosageWarnings(drug, pc, ic)),
+          _safeWarnings(() => _fetchDurationWarnings(drug, pc, ic)),
+          _safeWarnings(() => _fetchPregnancyWarnings(drug, pc, ic)),
+        ]).then((results) => results.expand((items) => items).toList());
+      }),
+    );
+    warnings.addAll(individualWarnings.expand((items) => items));
 
     // 병용 금기 — 약물 쌍별로 정확하게 조회
     final comboRows = await _fetchComboRowsForPairs(drugs);
@@ -193,7 +220,7 @@ class DrugService {
       } catch (_) {}
     }
 
-    return warnings;
+    return _dedupeWarnings(warnings);
   }
 
   // ── 코드 추출 헬퍼 ────────────────────────────────────────────────────────
@@ -314,12 +341,16 @@ class DrugService {
   }
 
   static String _duplicateTitle(List<String> bases) {
+    if (bases.contains('same_product')) return '같은 약 중복';
     if (bases.contains('same_ingredient')) return '같은 성분의 약 중복';
     if (bases.contains('same_group')) return '같은 계열의 약 중복';
     return '비슷한 약 이름 중복';
   }
 
   static String _duplicateMessage(List<String> bases) {
+    if (bases.contains('same_product')) {
+      return '같은 약이 약봉투에 함께 등록되어 있습니다. 중복 복용하지 않도록 복용 전 확인해 주세요.';
+    }
     if (bases.contains('same_ingredient')) {
       return '같은 성분이 들어간 약이 함께 등록되어 있습니다. 중복 복용하지 않도록 복용 전 확인해 주세요.';
     }
@@ -455,8 +486,9 @@ class DrugService {
         return [w.type.name, r['성분코드'], r['성분명'],
             r['금기등급'], r['상세정보']].join('|');
       case DrugWarningType.comboContraindication:
+        return '${w.type.name}|${w.title}|${w.message}|${r['금기사유']}';
       case DrugWarningType.ingredientDuplication:
-        return '${w.type.name}|${w.title}|${w.message}';
+        return '${w.type.name}|${w.title}|${w.message}|${r['basis']}|${r['items']}';
     }
   }
 

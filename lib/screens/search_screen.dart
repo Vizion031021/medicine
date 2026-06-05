@@ -101,11 +101,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _toggleCompare(DrugInfo drug) async {
     final key = _drugKey(drug);
-    if (_myDrugs.any((item) => _drugKey(item) == key)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이미 약봉투에 들어있는 약입니다.')));
-      return;
-    }
     setState(() {
       if (_extraCompareDrugs.any((item) => _drugKey(item) == key)) {
         _extraCompareDrugs = _extraCompareDrugs.where((item) => _drugKey(item) != key).toList();
@@ -286,7 +281,7 @@ class _SearchScreenState extends State<SearchScreen> {
           final isExtra = _extraCompareDrugs.any((item) => _drugKey(item) == key);
           return _DrugResultCard(
             drug: drug,
-            isSelected: isInBag || isExtra,
+            isSelected: isExtra,
             isInSelectedBag: isInBag,
             onTap: () async {
               await Navigator.push(context,
@@ -400,7 +395,7 @@ class _DrugResultCard extends StatelessWidget {
           ])),
           const SizedBox(width: 8),
           IconButton(
-            tooltip: isInSelectedBag ? '선택한 약봉투에 포함됨' : '비교 약 선택',
+            tooltip: isSelected ? '비교 선택 해제' : '비교 약 선택',
             onPressed: onCompareTap,
             icon: Icon(
               isSelected ? Icons.check_circle_rounded : Icons.add_circle_outline_rounded,

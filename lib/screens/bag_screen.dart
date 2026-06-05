@@ -597,7 +597,7 @@ class _BagScreenState extends State<BagScreen> {
       _assignments.remove(med.id);
       setState(() {
         _medications.removeWhere(
-              (item) => item.id == med.id || item.productCode == med.productCode,
+              (item) => item.id == med.id,
         );
         _bagWarnings = [];
       });

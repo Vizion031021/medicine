@@ -19,11 +19,9 @@ class MedicationService {
         .order('created_at', ascending: false);
 
     final medications = <UserMedication>[];
-    final seenCodes = <String>{};
     for (final raw in rows as List) {
       final row = Map<String, dynamic>.from(raw as Map);
       final productCode = (row['product_code'] ?? '').toString();
-      if (productCode.isNotEmpty && !seenCodes.add(productCode)) continue;
       final drug = await DrugService.findByProductCode(productCode);
       medications.add(UserMedication.fromJson(row, drug: drug));
     }
@@ -40,6 +38,7 @@ class MedicationService {
     List<String> scheduleTimes = const ['08:00:00'],
     String mealTimingLabel = '식후',
     int mealOffsetMinutes = 0,
+    bool allowDuplicate = false,
   }) async {
     final userId = await AuthService.getCurrentUserId();
     if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
@@ -47,15 +46,17 @@ class MedicationService {
     final code = drug.displayCode;
     if (code.isEmpty) throw StateError('약품 코드가 없어 약봉투에 저장할 수 없습니다.');
 
-    final existing = await _client
+    final existingRows = await _client
         .from('user_medications')
         .select('id')
         .eq('user_id', userId)
         .eq('product_code', code)
         .eq('is_active', true)
-        .maybeSingle();
+        .limit(1);
 
-    if (existing != null) throw StateError('이미 약봉투에 등록된 약입니다.');
+    if ((existingRows as List).isNotEmpty && !allowDuplicate) {
+      throw DuplicateMedicationException();
+    }
 
     final inserted = await _client
         .from('user_medications')
@@ -207,7 +208,7 @@ class MedicationService {
     final targetIds = <String>{};
     if (medicationId.isNotEmpty) targetIds.add(medicationId);
 
-    if (productCode.isNotEmpty) {
+    if (targetIds.isEmpty && productCode.isNotEmpty) {
       final rows = await _client
           .from('user_medications')
           .select('id')
@@ -225,23 +226,31 @@ class MedicationService {
       throw StateError('약봉투에서 제거할 약을 찾지 못했습니다.');
     }
 
-    dynamic request = _client
+    await _client
         .from('user_medications')
-        .update({'is_active': false})
-        .eq('user_id', userId);
-    if (targetIds.length == 1) {
-      request = request.eq('id', targetIds.first);
-    } else {
-      request = request.inFilter('id', targetIds.toList());
-    }
-
-    await request;
+        .update({
+          'is_active': false,
+          'updated_at': now,
+        })
+        .eq('user_id', userId)
+        .inFilter('id', targetIds.toList());
 
     await _client
         .from('user_schedules')
         .update({'deleted_at': now})
+        .eq('user_id', userId)
         .inFilter('user_medication_id', targetIds.toList());
   }
+}
+
+class DuplicateMedicationException implements Exception {
+  final String message;
+  const DuplicateMedicationException([
+    this.message = '이미 약봉투에 등록된 약입니다.',
+  ]);
+
+  @override
+  String toString() => message;
 }
 
 class ScheduleService {
@@ -281,10 +290,14 @@ class ScheduleService {
     required String scheduleId,
     required bool isTaken,
   }) async {
+    final userId = await AuthService.getCurrentUserId();
+    if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
+
     await _client
         .from('user_schedules')
         .update({'is_taken': isTaken})
-        .eq('id', scheduleId);
+        .eq('id', scheduleId)
+        .eq('user_id', userId);
   }
 
   static Future<void> _ensureSchedules({
@@ -411,10 +424,13 @@ class ScheduleService {
 
   static Future<UserMedication?> _fetchMedication(String medicationId) async {
     if (medicationId.isEmpty) return null;
+    final userId = await AuthService.getCurrentUserId();
+    if (userId == null || userId.isEmpty) return null;
     final row = await _client
         .from('user_medications')
         .select()
         .eq('id', medicationId)
+        .eq('user_id', userId)
         .maybeSingle();
     if (row == null) return null;
     final map = Map<String, dynamic>.from(row);

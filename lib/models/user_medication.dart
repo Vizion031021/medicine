@@ -50,9 +50,24 @@ class UserMedication {
   }
 
   String get displayName {
-    if (customName.isNotEmpty) return customName;
-    if (drug != null && drug!.name.isNotEmpty) return drug!.name;
-    return productCode;
+    if (customName.isNotEmpty) return _cleanDisplayName(customName);
+    if (drug != null && drug!.name.isNotEmpty) {
+      return _cleanDisplayName(drug!.name);
+    }
+    return _cleanDisplayName(productCode);
+  }
+
+  static String _cleanDisplayName(String value) {
+    final openParenIndex = value.indexOf('(');
+    final withoutParentheses = openParenIndex >= 0
+        ? value.substring(0, openParenIndex)
+        : value;
+    final cleaned = withoutParentheses
+        .replaceAll('\uFFFD', '')
+        .replaceAll(RegExp(r'[\u0000-\u001F\u007F]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return cleaned.isEmpty ? value.trim() : cleaned;
   }
 }
 
