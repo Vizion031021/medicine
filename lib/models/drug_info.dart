@@ -42,7 +42,7 @@ class DrugInfo {
 
     return DrugInfo(
       id: value('ID'),
-      name: value('한글상품명'),
+      name: _cleanText(value('한글상품명')),
       company: value('업체명'),
       standardCode: value('표준코드'),
       productCode: _firstValue(json, ['대표코드', '표준코드']),
@@ -61,7 +61,7 @@ class DrugInfo {
       prescriptionType: value('전문일반구분'),
       atcCode: value('국제표준코드(ATC코드)'),
       specialManagementType: value('특수관리약품구분'),
-      ingredientName: _firstValue(json, ['성분명', '일반명', '주성분']),
+      ingredientName: _cleanText(_firstValue(json, ['성분명', '일반명', '주성분'])),
       raw: json,
     );
   }
@@ -83,6 +83,14 @@ class DrugInfo {
       if (value.isNotEmpty) return value;
     }
     return '';
+  }
+
+  static String _cleanText(String value) {
+    return value
+        .replaceAll('\uFFFD', '')
+        .replaceAll(RegExp(r'[\u0000-\u001F\u007F]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 }
 
