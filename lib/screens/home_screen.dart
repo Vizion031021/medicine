@@ -70,11 +70,13 @@ class _ScheduleItem {
   final String time;
   final String detail;
   final bool done;
+  final String bagId;
   const _ScheduleItem({
     this.scheduleId,
     required this.num, required this.name,
     required this.time, required this.detail,
     required this.done,
+    this.bagId = 'default',
   });
 }
 
@@ -217,6 +219,8 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() {
         _todaySchedules = List.generate(schedules.length, (i) {
           final s = schedules[i];
+          final medId = s.medication?.id ?? '';
+          final bagId = _assignments[medId] ?? 'default';
           return _ScheduleItem(
             scheduleId: s.id,
             num: i + 1,
@@ -225,6 +229,7 @@ class _HomeScreenState extends State<HomeScreen>
             detail: s.medication?.instruction.isNotEmpty == true
                 ? s.medication!.instruction : '복용 예정',
             done: s.isTaken,
+            bagId: bagId,
           );
         });
       });
@@ -501,6 +506,18 @@ class _HomeScreenState extends State<HomeScreen>
     final current = _currentPeriodSchedules;
     final doneCount = current.where((s) => s.done).length;
 
+    // 약봉투별 그룹화
+    final Map<String, List<_ScheduleItem>> byBag = {};
+    for (final s in current) {
+      byBag.putIfAbsent(s.bagId, () => []).add(s);
+    }
+    // _bags 순서대로 정렬
+    final orderedBagIds = _bags.map((b) => b.id).where((id) => byBag.containsKey(id)).toList();
+    // _bags에 없는 bagId도 포함
+    for (final id in byBag.keys) {
+      if (!orderedBagIds.contains(id)) orderedBagIds.add(id);
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(
@@ -520,7 +537,6 @@ class _HomeScreenState extends State<HomeScreen>
                           color: AppColors.lavenderDark)),
                 ],
               ),
-              // 전체보기 → 캘린더 탭(index 2)
               GestureDetector(
                 onTap: () => widget.onTabChange?.call(2),
                 child: const Row(
@@ -534,39 +550,66 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
           const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.cardBorder, width: 0.5),
-            ),
-            child: current.isEmpty
-                ? Padding(
+          if (current.isEmpty)
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.cardBorder, width: 0.5),
+              ),
               padding: const EdgeInsets.all(16),
               child: Center(
                 child: Text(
                   '${_period.label}에 예정된 복약 일정이 없습니다.',
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.textHint),
+                  style: const TextStyle(fontSize: 12, color: AppColors.textHint),
                 ),
               ),
             )
-                : Column(
-              children: List.generate(current.length, (i) {
-                return _ScheduleRow(
-                  item: current[i],
-                  isLast: i == current.length - 1,
-                  onChanged: _loadTodaySchedules,
-                );
-              }),
-            ),
-          ),
+          else
+            ...orderedBagIds.map((bagId) {
+              final bag = _bags.firstWhere((b) => b.id == bagId,
+                  orElse: () => const BagData(id: 'default', name: '내 약봉투'));
+              final items = byBag[bagId]!;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.cardBorder, width: 0.5),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 봉투 헤더
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                      child: Row(children: [
+                        Container(width: 8, height: 8,
+                            decoration: BoxDecoration(color: bag.color, shape: BoxShape.circle)),
+                        const SizedBox(width: 6),
+                        Text(bag.name,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary)),
+                        const SizedBox(width: 4),
+                        Text('${items.where((s) => s.done).length}/${items.length}',
+                            style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
+                      ]),
+                    ),
+                    const Divider(height: 0.5, color: AppColors.cardBorder),
+                    ...List.generate(items.length, (i) => _ScheduleRow(
+                      item: items[i],
+                      isLast: i == items.length - 1,
+                      onChanged: _loadTodaySchedules,
+                    )),
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );
   }
 }
-
 // ─── 별 (고정 seed) ───────────────────────────────────────────────────────────
 
 // ─── CustomPainter ────────────────────────────────────────────────────────────

@@ -103,7 +103,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final key = _drugKey(drug);
     if (_myDrugs.any((item) => _drugKey(item) == key)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미 약봉투에 들어있는 약입니다.')));
+          const SnackBar(content: Text('이미 약봉투에 들어있는 약입니다.')));
       return;
     }
     setState(() {
@@ -159,27 +159,39 @@ class _SearchScreenState extends State<SearchScreen> {
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('약 검색',
+              const Text('약 비교',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _searchController,
-                onChanged: _onSearchChanged,
-                decoration: InputDecoration(
-                  hintText: '상품명 또는 업체명 검색',
-                  prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.lavender),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.close, size: 16),
-                          onPressed: () { _searchController.clear(); _search(''); })
-                      : null,
-                ),
-              ),
             ]),
           ),
           _buildMyMedicationPanel(),
           if (_myDrugs.isNotEmpty || _extraCompareDrugs.isNotEmpty) _buildComparePanel(),
           Expanded(child: _buildBody()),
+          // ── 검색칸 하단 ──────────────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                top: BorderSide(
+                  color: AppColors.cardBorder,
+                  width: 0.5,
+                ),
+              ),
+            ),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              decoration: InputDecoration(
+                hintText: '상품명 또는 업체명으로 약 검색',
+                prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.lavender),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                    icon: const Icon(Icons.close, size: 16),
+                    onPressed: () { _searchController.clear(); _search(''); })
+                    : null,
+              ),
+            ),
+          ),
         ]),
       ),
     );
@@ -190,7 +202,7 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_bags.isEmpty) return const SizedBox.shrink();
     final selectedBagId = _selectedBagId ?? _bags.first.id;
     final meds = _myMedications.where((med) =>
-        med.drug != null && ((_assignments[med.id] ?? 'default') == selectedBagId)).toList();
+    med.drug != null && ((_assignments[med.id] ?? 'default') == selectedBagId)).toList();
 
     return Container(
       width: double.infinity,
@@ -206,7 +218,7 @@ class _SearchScreenState extends State<SearchScreen> {
             children: _bags.map((bag) {
               final selected = bag.id == selectedBagId;
               final count = _myMedications.where(
-                  (med) => (_assignments[med.id] ?? 'default') == bag.id).length;
+                      (med) => (_assignments[med.id] ?? 'default') == bag.id).length;
               return Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: ChoiceChip(
@@ -334,8 +346,8 @@ class _SearchScreenState extends State<SearchScreen> {
                 _compareWarnings.isEmpty
                     ? '현재 함께 복용 시 주의가 필요한 조합은 확인되지 않았습니다.'
                     : _compareWarnings
-                        .map((w) => '${w.title}: ${w.message}')
-                        .join('\n'),
+                    .map((w) => '${w.title}: ${w.message}')
+                    .join('\n'),
                 style: TextStyle(fontSize: 10,
                     color: _compareWarnings.isEmpty ? AppColors.success : AppColors.danger,
                     height: 1.4),

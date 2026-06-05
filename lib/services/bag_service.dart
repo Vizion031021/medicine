@@ -121,6 +121,19 @@ class BagService {
     await _saveBags(prefs, bags);
   }
 
+  // ── 봉투 수정 ─────────────────────────────────────────────────────────────
+
+  static Future<void> updateBag(String bagId, String name, int colorIndex) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final bags = await getBags();
+    final idx = bags.indexWhere((b) => b.id == bagId);
+    if (idx == -1) return;
+    bags[idx] = BagData(id: bagId, name: trimmed, colorIndex: colorIndex);
+    await _saveBags(prefs, bags);
+  }
+
   // ── 봉투 삭제 ─────────────────────────────────────────────────────────────
 
   static Future<void> removeBag(String bagId) async {
@@ -132,7 +145,7 @@ class BagService {
 
     final assignments = await getAssignments();
     assignments.updateAll(
-      (_, currentBagId) => currentBagId == bagId ? _defaultBag.id : currentBagId,
+          (_, currentBagId) => currentBagId == bagId ? _defaultBag.id : currentBagId,
     );
     await prefs.setString(await _assignmentsKey(), jsonEncode(assignments));
   }

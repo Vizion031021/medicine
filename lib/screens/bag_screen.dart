@@ -112,18 +112,21 @@ class _BagScreenState extends State<BagScreen> {
     }
   }
 
-  // ── 봉투 추가 다이얼로그 ──────────────────────────────────────────────────
+  // ── 봉투 추가/수정 다이얼로그 ────────────────────────────────────────────
 
-  Future<void> _showAddBagDialog() async {
-    final nameCtrl = TextEditingController();
-    int colorIdx = 0;
+  Future<void> _showAddBagDialog() => _showBagDialog();
+
+  Future<void> _showBagDialog({BagData? editBag}) async {
+    final isEdit = editBag != null;
+    final nameCtrl = TextEditingController(text: isEdit ? editBag.name : '');
+    int colorIdx = isEdit ? editBag.colorIndex : 0;
 
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setInner) => AlertDialog(
-          title: const Text('새 약봉투 만들기',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          title: Text(isEdit ? '약봉투 수정' : '새 약봉투 만들기',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -172,7 +175,7 @@ class _BagScreenState extends State<BagScreen> {
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('만들기'),
+              child: const Text('저장'),
             ),
           ],
         ),
@@ -180,7 +183,11 @@ class _BagScreenState extends State<BagScreen> {
     );
 
     if (result == true && nameCtrl.text.trim().isNotEmpty) {
-      await BagService.addBag(nameCtrl.text.trim(), colorIdx);
+      if (isEdit) {
+        await BagService.updateBag(editBag.id, nameCtrl.text.trim(), colorIdx);
+      } else {
+        await BagService.addBag(nameCtrl.text.trim(), colorIdx);
+      }
       await _load();
     }
   }
@@ -473,8 +480,8 @@ class _BagScreenState extends State<BagScreen> {
     try {
       final sortedSlots = slots.toList()..sort((a, b) => _slotHour(a).compareTo(_slotHour(b)));
       final offset = (useCustomOffset
-              ? int.tryParse(offsetCtrl.text.trim()) ?? mealOffsetMinutes
-              : mealOffsetMinutes)
+          ? int.tryParse(offsetCtrl.text.trim()) ?? mealOffsetMinutes
+          : mealOffsetMinutes)
           .clamp(0, 180)
           .toInt();
       final instruction = '${sortedSlots.join(', ')} $mealTiming ${_offsetLabel(offset)} 복용 · ${_fmtDt(startDate)}~${_fmtDt(endDate)}';
@@ -590,7 +597,7 @@ class _BagScreenState extends State<BagScreen> {
       _assignments.remove(med.id);
       setState(() {
         _medications.removeWhere(
-          (item) => item.id == med.id || item.productCode == med.productCode,
+              (item) => item.id == med.id || item.productCode == med.productCode,
         );
         _bagWarnings = [];
       });
@@ -774,6 +781,7 @@ class _BagScreenState extends State<BagScreen> {
                       }),
                       onMedTap: _showEditMedicationDialog,
                       onMedDelete: _removeMedication,
+                      onBagEdit: () => _showBagDialog(editBag: bag),
                       onBagDelete: bag.id == 'default'
                           ? null
                           : () async {
@@ -802,6 +810,7 @@ class _BagCard extends StatelessWidget {
   final ValueChanged<UserMedication> onMedTap;
   final ValueChanged<UserMedication> onMedDelete;
   final VoidCallback? onBagDelete;
+  final VoidCallback? onBagEdit;
 
   const _BagCard({
     required this.bag,
@@ -811,6 +820,7 @@ class _BagCard extends StatelessWidget {
     required this.onMedTap,
     required this.onMedDelete,
     this.onBagDelete,
+    this.onBagEdit,
   });
 
   @override
@@ -852,6 +862,12 @@ class _BagCard extends StatelessWidget {
                   ),
                   // 상태 배지
                   // 통합 경고로 이동 — 봉투별 배지 제거
+                  const SizedBox(width: 6),
+                  // 수정 버튼
+                  GestureDetector(
+                    onTap: onBagEdit,
+                    child: const Icon(Icons.edit_outlined, size: 16, color: AppColors.textHint),
+                  ),
                   const SizedBox(width: 6),
                   // 삭제 버튼 (기본 봉투 제외)
                   if (onBagDelete != null)

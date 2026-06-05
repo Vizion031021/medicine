@@ -40,6 +40,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _showOrderPanel = false;
   String? _errorMessage;
   final TextEditingController _memoController = TextEditingController();
+  final Set<String> _selectedMemoTags = {};
+  static const List<String> _sideEffectTags = [
+    '두통', '메스꺼움', '어지러움', '졸음', '복통', '식욕부진', '두근거림', '발진',
+  ];
 
   @override
   void initState() {
@@ -711,9 +715,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
         color: Colors.white, borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.cardBorder, width: 0.5),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: StatefulBuilder(builder: (ctx, setTag) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${_selectedDay.month}월 ${_selectedDay.day}일 메모',
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 8),
+        const Text('부작용 태그', style: TextStyle(fontSize: 11, color: AppColors.textHint)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 6, runSpacing: 6, children: _sideEffectTags.map((tag) {
+          final selected = _selectedMemoTags.contains(tag);
+          return GestureDetector(
+            onTap: () => setTag(() {
+              setState(() {});
+              if (selected) _selectedMemoTags.remove(tag);
+              else _selectedMemoTags.add(tag);
+            }),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.lavender : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                    color: selected ? AppColors.lavender : AppColors.lavenderBorder, width: 0.8),
+              ),
+              child: Text(tag, style: TextStyle(fontSize: 11,
+                  color: selected ? Colors.white : AppColors.lavenderDark,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400)),
+            ),
+          );
+        }).toList()),
         const SizedBox(height: 8),
         TextField(controller: _memoController, maxLines: 3,
             decoration: const InputDecoration(hintText: '처방 사유, 특이사항, 복용 실수 등을 기록하세요.')),
@@ -726,7 +757,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
           )),
           const SizedBox(width: 8),
           Expanded(child: OutlinedButton(
-            onPressed: () => setState(() { _showMemoInput = false; _memoController.clear(); }),
+            onPressed: () => setState(() {
+              _showMemoInput = false;
+              _memoController.clear();
+              _selectedMemoTags.clear();
+            }),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: Color(0xFFDDDDDD)),
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -734,10 +769,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: const Text('취소', style: TextStyle(color: AppColors.textSecondary)),
           )),
         ]),
-      ]),
+      ])),
     );
   }
-
   // ── 기간 바텀시트 ─────────────────────────────────────────────────────────
 
   void _showFilterSheet() {
@@ -861,11 +895,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
   // ── 액션 ─────────────────────────────────────────────────────────────────
 
   Future<void> _saveDateMemo() async {
-    final content = _memoController.text.trim();
+    final tagPart = _selectedMemoTags.map((t) => '#$t').join(' ');
+    final textPart = _memoController.text.trim();
+    final content = [tagPart, textPart].where((s) => s.isNotEmpty).join(' ');
     if (content.isEmpty) return;
     try {
       await CalendarMemoService.saveMemo(date: _selectedDay, content: content);
       _memoController.clear();
+      _selectedMemoTags.clear();
       setState(() => _showMemoInput = false);
       await _loadMonth();
     } catch (_) {
@@ -944,9 +981,7 @@ class _BagScheduleGroup extends StatelessWidget {
                   ),
                   child: Text(meal, style: TextStyle(fontSize: 10, color: mc, fontWeight: FontWeight.w700)),
                 ),
-                const SizedBox(width: 6),
-                Text(group.isNotEmpty ? fmtTime(group.first.time) : '',
-                    style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
+
                 const Spacer(),
                 Text('${group.where((s) => s.isTaken).length}/${group.length}',
                     style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
