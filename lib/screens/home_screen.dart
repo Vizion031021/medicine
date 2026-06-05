@@ -829,7 +829,6 @@ class _SeasonPainter extends CustomPainter {
           old.particles != particles || old.hasPending != hasPending;
 }
 
-// ─── 복약 일정 행 ─────────────────────────────────────────────────────────────
 
 class _ScheduleRow extends StatefulWidget {
   final _ScheduleItem item;
