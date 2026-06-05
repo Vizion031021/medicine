@@ -36,8 +36,6 @@ dependencies:
   cupertino_icons: ^1.0.8
   supabase_flutter: ^2.12.4
   flutter_dotenv: ^6.0.0
-  # flutter_local_notifications 삭제
-  # timezone 삭제
 
 dependency_overrides:
   app_links: 6.4.0

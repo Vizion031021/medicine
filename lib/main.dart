@@ -255,16 +255,16 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 }
 
-// ─── 알약 탭 아이템 ───────────────────────────────────────────────────────────
+// ─── 하단 네비게이션 아이템 ───────────────────────────────────────────────────
 
-class _PillNavItem extends StatelessWidget {
+class _NavItem extends StatelessWidget {
   final IconData icon;
   final IconData activeIcon;
   final String label;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _PillNavItem({
+  const _NavItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
@@ -275,7 +275,7 @@ class _PillNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      flex: isActive ? 2 : 2, // 활성 탭 살짝만 넓게
+      flex: 1,
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
@@ -294,7 +294,6 @@ class _PillNavItem extends StatelessWidget {
                 size: 18,
                 color: isActive ? Colors.white : AppColors.textHint,
               ),
-              // 활성 탭만 라벨 표시
               AnimatedSize(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeInOut,

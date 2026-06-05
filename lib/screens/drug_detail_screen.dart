@@ -189,7 +189,7 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
           _SectionCard(
             icon: Icons.schedule_outlined,
             iconColor: AppColors.lavender,
-            title: '복용 알림 설정',
+            title: '복용 일정 설정',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

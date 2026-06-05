@@ -821,7 +821,6 @@ class _SeasonPainter extends CustomPainter {
     )..layout(maxWidth: size.width - 32);
     greetTp.paint(canvas, Offset(16, size.height * 0.74));
 
-    // 복약 알림 — 이름 대신 "복용해야 할 약이 있습니다!"
     if (hasPending) {
       final alertBg = isNight
           ? const Color(0xFF7B6FD4).withOpacity(0.55)

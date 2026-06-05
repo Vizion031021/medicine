@@ -28,10 +28,6 @@ android {
     }
 }
 
-dependencies {
-    // coreLibraryDesugaring 줄 완전히 삭제
-}
-
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
