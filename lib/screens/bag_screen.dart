@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sseudeuson/models/drug_info.dart';
-import 'package:sseudeuson/models/medicine_model.dart';
 import 'package:sseudeuson/models/user_medication.dart';
-import 'package:sseudeuson/screens/bag_detail_screen.dart';
 import 'package:sseudeuson/screens/drug_detail_screen.dart';
 import 'package:sseudeuson/services/bag_service.dart';
 import 'package:sseudeuson/services/drug_service.dart';
@@ -273,8 +271,8 @@ class _BagScreenState extends State<BagScreen> {
     final slots = _slotsFromInstruction(med.instruction);
     var mealTiming = med.instruction.contains('식전') ? '식전' : '식후';
     var dates = _datesFromInstruction(med.instruction);
-    var startDate = dates.$1;
-    var endDate = dates.$2;
+    var startDate = dates[0];
+    var endDate = dates[1];
     var selectedPresetDays = _presetFor(startDate, endDate);
 
     final result = await showDialog<bool>(
@@ -368,25 +366,30 @@ class _BagScreenState extends State<BagScreen> {
                 const SizedBox(height: 12),
                 const Text('복용 기간', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                 const SizedBox(height: 8),
-                Wrap(spacing: 6, runSpacing: 6, children: [(3,'3일'),(7,'7일'),(14,'14일'),(30,'한달')].map((p) {
-                  return GestureDetector(
-                    onTap: () => setInner(() {
-                      selectedPresetDays = p.$1;
-                      endDate = DateTime(startDate.year, startDate.month, startDate.day + p.$1 - 1);
-                    }),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: selectedPresetDays == p.$1 ? AppColors.lavender : Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: selectedPresetDays == p.$1 ? AppColors.lavender : AppColors.lavenderBorder, width: 0.7),
+                Wrap(spacing: 6, runSpacing: 6, children: () {
+                  final presets = [[3, '3일'], [7, '7일'], [14, '14일'], [30, '한달']];
+                  return presets.map((p) {
+                    final days = p[0] as int;
+                    final label = p[1] as String;
+                    return GestureDetector(
+                      onTap: () => setInner(() {
+                        selectedPresetDays = days;
+                        endDate = DateTime(startDate.year, startDate.month, startDate.day + days - 1);
+                      }),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: selectedPresetDays == days ? AppColors.lavender : Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: selectedPresetDays == days ? AppColors.lavender : AppColors.lavenderBorder, width: 0.7),
+                        ),
+                        child: Text(label, style: TextStyle(fontSize: 11,
+                            color: selectedPresetDays == days ? Colors.white : AppColors.lavenderDark, fontWeight: FontWeight.w600)),
                       ),
-                      child: Text(p.$2, style: TextStyle(fontSize: 11,
-                          color: selectedPresetDays == p.$1 ? Colors.white : AppColors.lavenderDark, fontWeight: FontWeight.w600)),
-                    ),
-                  );
-                }).toList()),
+                    );
+                  }).toList();
+                }()),
                 const SizedBox(height: 8),
                 Row(children: [
                   Expanded(child: _EditDateBtn(label: '시작', value: _fmtDt(startDate), onTap: pickStart)),
@@ -442,15 +445,14 @@ class _BagScreenState extends State<BagScreen> {
     return slots;
   }
 
-  (DateTime, DateTime) _datesFromInstruction(String instruction) {
+  List<DateTime> _datesFromInstruction(String instruction) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final match = RegExp(r'(\d{4})\.(\d{2})\.(\d{2})~(\d{4})\.(\d{2})\.(\d{2})').firstMatch(instruction);
-    if (match == null) return (today, DateTime(today.year, today.month, today.day + 6));
-    return (
-    DateTime(int.parse(match.group(1)!), int.parse(match.group(2)!), int.parse(match.group(3)!)),
-    DateTime(int.parse(match.group(4)!), int.parse(match.group(5)!), int.parse(match.group(6)!)),
-    );
+    if (match == null) return [today, DateTime(today.year, today.month, today.day + 6)];
+    final start = DateTime(int.parse(match.group(1)!), int.parse(match.group(2)!), int.parse(match.group(3)!));
+    final end   = DateTime(int.parse(match.group(4)!), int.parse(match.group(5)!), int.parse(match.group(6)!));
+    return [start, end];
   }
 
   int _presetFor(DateTime start, DateTime end) {
@@ -643,31 +645,14 @@ class _BagScreenState extends State<BagScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 80),
                 children: [
-                  // ── 통합 경고 (최상단 한 번만) ──────────────────
-                  if (_bagWarnings.isNotEmpty)
-                    _GlobalWarningSection(
-                      warnings: _bagWarnings,
-                      medications: _medications,
-                      assignments: _assignments,
-                      bags: _bags,
-                    ),
-                  if (_medications.length >= 2 && _bagWarnings.isEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.successBg,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.success.withOpacity(0.3), width: 0.5),
-                      ),
-                      child: const Row(children: [
-                        Icon(Icons.check_circle_outline, color: AppColors.success, size: 14),
-                        SizedBox(width: 6),
-                        Text('현재 DB 기준 확인된 병용 금기 없음',
-                            style: TextStyle(fontSize: 11, color: Color(0xFF2E7D32))),
-                      ]),
-                    ),
-                  // ── 봉투 목록 ────────────────────────────────────
+                  _OverallWarningPanel(
+                    medicationCount: _medications.length,
+                    warnings: _bagWarnings,
+                    medications: _medications,
+                    assignments: _assignments,
+                    bags: _bags,
+                  ),
+                  const SizedBox(height: 10),
                   ..._bags.map((bag) {
                     final meds = _medications
                         .where((m) =>
@@ -676,7 +661,6 @@ class _BagScreenState extends State<BagScreen> {
                     return _BagCard(
                       bag: bag,
                       medications: meds,
-                      warnings: const [],   // 봉투별 경고 제거
                       isExpanded: _expanded.contains(bag.id),
                       onToggle: () => setState(() {
                         if (_expanded.contains(bag.id)) {
@@ -685,7 +669,7 @@ class _BagScreenState extends State<BagScreen> {
                           _expanded.add(bag.id);
                         }
                       }),
-                      onMedTap: (med) => _showEditMedicationDialog(med),
+                      onMedTap: _showEditMedicationDialog,
                       onMedDelete: _removeMedication,
                       onBagDelete: bag.id == 'default'
                           ? null
@@ -710,7 +694,6 @@ class _BagScreenState extends State<BagScreen> {
 class _BagCard extends StatelessWidget {
   final BagData bag;
   final List<UserMedication> medications;
-  final List<DrugWarning> warnings;
   final bool isExpanded;
   final VoidCallback onToggle;
   final ValueChanged<UserMedication> onMedTap;
@@ -720,7 +703,6 @@ class _BagCard extends StatelessWidget {
   const _BagCard({
     required this.bag,
     required this.medications,
-    required this.warnings,
     required this.isExpanded,
     required this.onToggle,
     required this.onMedTap,
@@ -838,28 +820,6 @@ class _BagCard extends StatelessWidget {
                       }).toList(),
                     ),
                   ],
-                  // ── 경고 스트립 ──────────────────────────────────────────
-                  if (warnings.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    ...warnings.take(3).map((w) => _WarningStrip(warning: w)),
-                  ] else if (medications.length >= 2) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.successBg,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.check_circle_outline, color: AppColors.success, size: 13),
-                          SizedBox(width: 5),
-                          Text('현재 DB 기준 확인된 병용 금기 없음',
-                              style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32))),
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -870,48 +830,33 @@ class _BagCard extends StatelessWidget {
   }
 }
 
-// ─── 통합 경고 섹션 (최상단 한 번만 표시) ────────────────────────────────────
-//
-// 각 경고 메시지에 관련 약물이 어느 봉투에 속하는지 표기
-// 예: 코사인정(아파요, 싫어요)
+// ─── 전체 약 상호작용 패널 ────────────────────────────────────────────────────
 
-class _GlobalWarningSection extends StatefulWidget {
+class _OverallWarningPanel extends StatelessWidget {
+  final int medicationCount;
   final List<DrugWarning> warnings;
   final List<UserMedication> medications;
   final Map<String, String> assignments;
   final List<BagData> bags;
 
-  const _GlobalWarningSection({
+  const _OverallWarningPanel({
+    required this.medicationCount,
     required this.warnings,
     required this.medications,
     required this.assignments,
     required this.bags,
   });
 
-  @override
-  State<_GlobalWarningSection> createState() => _GlobalWarningSectionState();
-}
-
-class _GlobalWarningSectionState extends State<_GlobalWarningSection> {
-  bool _expanded = false;
-
   // 약물 이름에 봉투 이름 추가: "코사인정(아파요, 싫어요)"
   String _enrichMessage(String message) {
     String result = message;
-    for (final med in widget.medications) {
+    for (final med in medications) {
       final name = med.displayName;
       if (!result.contains(name)) continue;
-
-      // 해당 약이 속한 봉투 찾기
-      final bagId = widget.assignments[med.id] ?? 'default';
+      final bagId = assignments[med.id] ?? 'default';
       String? bagName;
-      try {
-        bagName = widget.bags.firstWhere((b) => b.id == bagId).name;
-      } catch (_) {}
-
-      if (bagName != null) {
-        // 이미 봉투 표기된 경우 스킵
-        if (result.contains('$name($bagName)') || result.contains('$name(')) continue;
+      try { bagName = bags.firstWhere((b) => b.id == bagId).name; } catch (_) {}
+      if (bagName != null && !result.contains('$name(')) {
         result = result.replaceAll(name, '$name($bagName)');
       }
     }
@@ -920,18 +865,19 @@ class _GlobalWarningSectionState extends State<_GlobalWarningSection> {
 
   @override
   Widget build(BuildContext context) {
-    final high = widget.warnings.where((w) => w.isHighRisk).toList();
-    final mid  = widget.warnings.where((w) => !w.isHighRisk).toList();
-    final displayWarnings = _expanded ? widget.warnings : widget.warnings.take(2).toList();
+    final hasEnoughMeds = medicationCount >= 2;
+    final high = warnings.where((w) => w.isHighRisk).toList();
+    final mid  = warnings.where((w) => !w.isHighRisk).toList();
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: high.isNotEmpty
-              ? AppColors.danger.withOpacity(0.4)
+          color: warnings.isEmpty ? AppColors.cardBorder
+              : high.isNotEmpty ? AppColors.danger.withOpacity(0.4)
               : AppColors.warning.withOpacity(0.4),
           width: 0.8,
         ),
@@ -939,114 +885,104 @@ class _GlobalWarningSectionState extends State<_GlobalWarningSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── 헤더 ──────────────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-            child: Row(children: [
-              Icon(
-                high.isNotEmpty ? Icons.dangerous_outlined : Icons.warning_amber_rounded,
-                size: 16,
-                color: high.isNotEmpty ? AppColors.danger : AppColors.warning,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  '약물 상호작용 주의 ${widget.warnings.length}건',
-                  style: TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w700,
-                    color: high.isNotEmpty ? AppColors.danger : AppColors.warning,
-                  ),
-                ),
-              ),
-              if (high.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.dangerBg,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text('고위험 ${high.length}건',
-                      style: const TextStyle(fontSize: 9, color: AppColors.danger, fontWeight: FontWeight.w700)),
-                ),
-              if (mid.isNotEmpty && high.isNotEmpty) const SizedBox(width: 4),
-              if (mid.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.warningBg,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text('중위험 ${mid.length}건',
-                      style: const TextStyle(fontSize: 9, color: AppColors.warning, fontWeight: FontWeight.w700)),
-                ),
-            ]),
-          ),
-          const Divider(height: 0.5, color: AppColors.cardBorder),
-
-          // ── 경고 목록 ──────────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ...displayWarnings.map((w) {
-                  final isHigh = w.isHighRisk;
-                  final color  = isHigh ? AppColors.danger : AppColors.warning;
-                  final bg     = isHigh ? AppColors.dangerBg : AppColors.warningBg;
-                  final enriched = _enrichMessage(w.message);
-                  return Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.all(9),
-                    decoration: BoxDecoration(
-                      color: bg,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: color.withOpacity(0.2), width: 0.5),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${w.title} · 위험도 ${w.severity}',
-                          style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          enriched,
-                          style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, height: 1.45),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-                // 더보기/접기
-                if (widget.warnings.length > 2)
-                  GestureDetector(
-                    onTap: () => setState(() => _expanded = !_expanded),
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _expanded ? '접기' : '나머지 ${widget.warnings.length - 2}건 더보기',
-                            style: const TextStyle(
-                                fontSize: 10, color: AppColors.lavender, fontWeight: FontWeight.w600),
-                          ),
-                          Icon(
-                            _expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                            size: 14, color: AppColors.lavender,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
+          Row(children: [
+            Icon(
+              warnings.isEmpty ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+              size: 16,
+              color: warnings.isEmpty ? AppColors.success : AppColors.warning,
             ),
-          ),
+            const SizedBox(width: 6),
+            Expanded(child: Text('전체 약 상호작용 종합',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
+                    color: warnings.isEmpty ? AppColors.success : AppColors.danger))),
+            if (high.isNotEmpty) _Badge(label: '고위험 ${high.length}건', color: AppColors.danger, bg: AppColors.dangerBg),
+            if (high.isNotEmpty && mid.isNotEmpty) const SizedBox(width: 4),
+            if (mid.isNotEmpty) _Badge(label: '중위험 ${mid.length}건', color: AppColors.warning, bg: AppColors.warningBg),
+            const SizedBox(width: 6),
+            Text('\$medicationCount종', style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
+          ]),
+          const SizedBox(height: 8),
+          if (!hasEnoughMeds)
+            const Text('약이 2개 이상 등록되면 전체 약 기준으로 상호작용을 확인합니다.',
+                style: TextStyle(fontSize: 10, color: AppColors.textHint))
+          else if (warnings.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(color: AppColors.successBg, borderRadius: BorderRadius.circular(8)),
+              child: const Row(children: [
+                Icon(Icons.check_circle_outline, color: AppColors.success, size: 14),
+                SizedBox(width: 6),
+                Expanded(child: Text('현재 DB 기준 확인된 병용금기/성분중복/효능군중복 정보가 없습니다.',
+                    style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32)))),
+              ]),
+            )
+          else
+            _ExpandableWarningList(warnings: warnings, enrichMessage: _enrichMessage),
         ],
       ),
     );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final String label;
+  final Color color, bg;
+  const _Badge({required this.label, required this.color, required this.bg});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+    child: Text(label, style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w700)),
+  );
+}
+
+class _ExpandableWarningList extends StatefulWidget {
+  final List<DrugWarning> warnings;
+  final String Function(String) enrichMessage;
+  const _ExpandableWarningList({required this.warnings, required this.enrichMessage});
+  @override
+  State<_ExpandableWarningList> createState() => _ExpandableWarningListState();
+}
+
+class _ExpandableWarningListState extends State<_ExpandableWarningList> {
+  bool _expanded = false;
+  @override
+  Widget build(BuildContext context) {
+    final displayWarnings = _expanded ? widget.warnings : widget.warnings.take(2).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ...displayWarnings.map((w) {
+        final isHigh = w.isHighRisk;
+        final color = isHigh ? AppColors.danger : AppColors.warning;
+        final bg = isHigh ? AppColors.dangerBg : AppColors.warningBg;
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.all(9),
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color.withOpacity(0.2), width: 0.5)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${w.title} · 위험도 ${w.severity}',
+                style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            Text(widget.enrichMessage(w.message),
+                style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, height: 1.45)),
+          ]),
+        );
+      }),
+      if (widget.warnings.length > 2)
+        GestureDetector(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(_expanded ? '접기' : '나머지 ${widget.warnings.length - 2}건 더보기',
+                  style: const TextStyle(fontSize: 10, color: AppColors.lavender, fontWeight: FontWeight.w600)),
+              Icon(_expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                  size: 14, color: AppColors.lavender),
+            ]),
+          ),
+        ),
+    ]);
   }
 }
 

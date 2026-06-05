@@ -674,14 +674,14 @@ class _SeasonPainter extends CustomPainter {
     final isNight = period == DayPeriod.night;
     final fc = isNight ? const Color(0xFFDCA0BE).withOpacity(0.65) : const Color(0xFFFFB7D5).withOpacity(0.82);
     final tp = Paint()..color=const Color(0xFF8D6E63)..style=PaintingStyle.stroke..strokeCap=StrokeCap.round;
-    for (final s in [(W*0.14,H*0.72,1.0),(W*0.72,H*0.72,0.78)]) {
-      final tx=s.$1,ty=s.$2,sc=s.$3;
+    for (final s in [[W*0.14,H*0.72,1.0],[W*0.72,H*0.72,0.78]]) {
+      final tx=s[0].toDouble(),ty=s[1].toDouble(),sc=s[2].toDouble();
       tp.strokeWidth=5*sc; canvas.drawLine(Offset(tx,ty),Offset(tx,ty-72*sc),tp);
       tp.strokeWidth=3*sc;
       canvas.drawLine(Offset(tx,ty-38*sc),Offset(tx-32*sc,ty-72*sc),tp);
       canvas.drawLine(Offset(tx,ty-48*sc),Offset(tx+28*sc,ty-76*sc),tp);
-      for (final p in [(0.0,-70.0),(18.0,-62.0),(-18.0,-65.0),(8.0,-82.0),(-10.0,-78.0),(20.0,-78.0),(-22.0,-55.0),(10.0,-55.0)]) {
-        canvas.drawCircle(Offset(tx+p.$1*sc,ty+p.$2*sc),(16+p.$1.abs()*0.3)*sc,Paint()..color=fc);
+      for (final p in [[0.0,-70.0],[18.0,-62.0],[-18.0,-65.0],[8.0,-82.0],[-10.0,-78.0],[20.0,-78.0],[-22.0,-55.0],[10.0,-55.0]]) {
+        canvas.drawCircle(Offset(tx+p[0].toDouble()*sc,ty+p[1].toDouble()*sc),(16+p[0].toDouble().abs()*0.3)*sc,Paint()..color=fc);
       }
     }
     final sp=Paint()..color=const Color(0xFF66BB6A)..style=PaintingStyle.stroke..strokeWidth=2;
@@ -705,10 +705,10 @@ class _SeasonPainter extends CustomPainter {
       canvas.drawPath(path,wp);
     }
     canvas.drawRect(Rect.fromLTWH(0,H*0.65,W,H*0.08),Paint()..color=isNight?const Color(0xFFBFA880):const Color(0xFFFFD54F));
-    for(final s in [(W*0.28,H*0.68,0),(W*0.72,H*0.68,1)]){
-      canvas.drawLine(Offset(s.$1,s.$2+8),Offset(s.$1,s.$2-28),Paint()..color=const Color(0xFF795548)..style=PaintingStyle.stroke..strokeWidth=3);
-      final path=Path()..moveTo(s.$1-30,s.$2-22)..quadraticBezierTo(s.$1,s.$2-42,s.$1+30,s.$2-22)..close();
-      canvas.drawPath(path,Paint()..color=s.$3==0?const Color(0xFFEF5350):const Color(0xFF42A5F5));
+    for(final s in [[W*0.28,H*0.68,0],[W*0.72,H*0.68,1]]){
+      canvas.drawLine(Offset(s[0].toDouble(),s[1].toDouble()+8),Offset(s[0].toDouble(),s[1].toDouble()-28),Paint()..color=const Color(0xFF795548)..style=PaintingStyle.stroke..strokeWidth=3);
+      final path=Path()..moveTo(s[0].toDouble()-30,s[1].toDouble()-22)..quadraticBezierTo(s[0].toDouble(),s[1].toDouble()-42,s[0].toDouble()+30,s[1].toDouble()-22)..close();
+      canvas.drawPath(path,Paint()..color=s[2].toDouble()==0?const Color(0xFFEF5350):const Color(0xFF42A5F5));
     }
   }
 
@@ -722,12 +722,12 @@ class _SeasonPainter extends CustomPainter {
       canvas.drawLine(Offset(sx,sy+26),Offset(sx,sy),sp);
       canvas.drawOval(Rect.fromCenter(center:Offset(sx,sy-7),width:7,height:20),Paint()..color=sp.color);
     }
-    for(final pos in [(W*0.18,H*0.72),(W*0.80,H*0.72)]){
-      final tx=pos.$1,ty=pos.$2;
+    for(final pos in [[W*0.18,H*0.72],[W*0.80,H*0.72]]){
+      final tx=pos[0].toDouble(),ty=pos[1].toDouble();
       final tp=Paint()..color=const Color(0xFF5D4037)..style=PaintingStyle.stroke;
       tp.strokeWidth=6; canvas.drawLine(Offset(tx,ty),Offset(tx,ty-72),tp);
       tp.strokeWidth=3;
-      for(final b in [(-32.0,-52.0),(28.0,-58.0),(-18.0,-76.0),(24.0,-72.0)]) canvas.drawLine(Offset(tx,ty-36),Offset(tx+b.$1,ty+b.$2),tp);
+      for(final b in [[-32.0,-52.0],[28.0,-58.0],[-18.0,-76.0],[24.0,-72.0]]) canvas.drawLine(Offset(tx,ty-36),Offset(tx+b[0].toDouble(),ty+b[1].toDouble()),tp);
       for(int ci=0;ci<4;ci++) canvas.drawCircle(Offset(tx+(ci%2==1?14.0:-11.0),ty-68+(ci>1?-12.0:0.0)),19,Paint()..color=[const Color(0xCCE65100),const Color(0xCCFF6F00),const Color(0xCCFF8F00),const Color(0xCCBF360C)][ci]);
     }
   }
@@ -751,11 +751,11 @@ class _SeasonPainter extends CustomPainter {
     final ap=Paint()..color=const Color(0xFF8D6E63)..style=PaintingStyle.stroke..strokeWidth=2.5;
     canvas.drawLine(Offset(sx-18,sy-16),Offset(sx-34,sy-26),ap);
     canvas.drawLine(Offset(sx+18,sy-16),Offset(sx+34,sy-26),ap);
-    for(final s in [(W*0.13,H*0.72,1.0),(W*0.30,H*0.72,0.72)]){
-      final tx=s.$1,ty=s.$2,sc=s.$3;
-      for(final t in [(0.0,-62.0,22.0),(0.0,-43.0,30.0),(0.0,-24.0,38.0)]){
-        canvas.drawPath(Path()..moveTo(tx+t.$1,ty+t.$2*sc)..lineTo(tx-t.$3*sc,ty+(t.$2+18)*sc)..lineTo(tx+t.$3*sc,ty+(t.$2+18)*sc)..close(),Paint()..color=isNight?const Color(0xFF1B5E20):const Color(0xFF2E7D32));
-        canvas.drawPath(Path()..moveTo(tx+t.$1,ty+t.$2*sc)..lineTo(tx-t.$3*0.5*sc,ty+(t.$2+6)*sc)..lineTo(tx+t.$3*0.5*sc,ty+(t.$2+6)*sc)..close(),Paint()..color=Colors.white.withOpacity(0.68));
+    for(final s in [[W*0.13,H*0.72,1.0],[W*0.30,H*0.72,0.72]]){
+      final tx=s[0].toDouble(),ty=s[1].toDouble(),sc=s[2].toDouble();
+      for(final t in [[0.0,-62.0,22.0],[0.0,-43.0,30.0],[0.0,-24.0,38.0]]){
+        canvas.drawPath(Path()..moveTo(tx+t[0].toDouble(),ty+t[1].toDouble()*sc)..lineTo(tx-t[2].toDouble()*sc,ty+(t[1].toDouble()+18)*sc)..lineTo(tx+t[2].toDouble()*sc,ty+(t[1].toDouble()+18)*sc)..close(),Paint()..color=isNight?const Color(0xFF1B5E20):const Color(0xFF2E7D32));
+        canvas.drawPath(Path()..moveTo(tx+t[0].toDouble(),ty+t[1].toDouble()*sc)..lineTo(tx-t[2].toDouble()*0.5*sc,ty+(t[1].toDouble()+6)*sc)..lineTo(tx+t[2].toDouble()*0.5*sc,ty+(t[1].toDouble()+6)*sc)..close(),Paint()..color=Colors.white.withOpacity(0.68));
       }
       canvas.drawRect(Rect.fromLTWH(tx-3.5*sc,ty,7*sc,10*sc),Paint()..color=const Color(0xFF5D4037));
     }
@@ -829,6 +829,7 @@ class _SeasonPainter extends CustomPainter {
           old.particles != particles || old.hasPending != hasPending;
 }
 
+// ─── 복약 일정 행 ─────────────────────────────────────────────────────────────
 
 class _ScheduleRow extends StatefulWidget {
   final _ScheduleItem item;
@@ -863,7 +864,14 @@ class _ScheduleRowState extends State<_ScheduleRow> {
     final meal = _mealLabel(widget.item.time);
     final timing = _mealTiming(widget.item.detail);
     final timeText = _fmtTime(widget.item.time);
-    final mc = switch(meal){'아침'=>const Color(0xFFEF9F27),'점심'=>AppColors.lavender,_=>const Color(0xFF4A6FA5)};
+    final Color mc;
+    if (meal == '아침') {
+      mc = const Color(0xFFEF9F27);
+    } else if (meal == '점심') {
+      mc = AppColors.lavender;
+    } else {
+      mc = const Color(0xFF4A6FA5);
+    }
 
     return Column(
       children: [

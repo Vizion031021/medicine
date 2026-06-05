@@ -9,22 +9,12 @@ import 'package:sseudeuson/screens/calendar_screen.dart';
 import 'package:sseudeuson/screens/compare_screen.dart';
 import 'package:sseudeuson/screens/auth/login_screen.dart';
 import 'package:sseudeuson/services/auth_service.dart';
-// import 'package:sseudeuson/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
-
-  if (SupabaseConfig.anonKey.isEmpty) {
-    throw StateError('SUPABASE_ANON_KEY is not set.');
-  }
-
-  await Supabase.initialize(
-    url: SupabaseConfig.url,
-    anonKey: SupabaseConfig.anonKey,
-  );
-  // await NotificationService.initialize();
-
+  if (SupabaseConfig.anonKey.isEmpty) throw StateError('SUPABASE_ANON_KEY is not set.');
+  await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey);
   runApp(const SseudeusOnApp());
 }
 
@@ -38,28 +28,17 @@ class SseudeusOnApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.lavender,
-          brightness: Brightness.light,
-        ),
-        // ① 흰색 기본 배경
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.lavender, brightness: Brightness.light),
         scaffoldBackgroundColor: Colors.white,
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: false,
+          elevation: 0, centerTitle: false,
           iconTheme: IconThemeData(color: AppColors.lavenderDark),
-          titleTextStyle: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
-          ),
+          titleTextStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
         ),
-        // ② 카드 배경 흰색, 테두리 라벤더
         cardTheme: CardThemeData(
-          elevation: 0,
-          color: Colors.white,
+          elevation: 0, color: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
             side: const BorderSide(color: AppColors.cardBorder, width: 0.5),
@@ -68,59 +47,40 @@ class SseudeusOnApp extends StatelessWidget {
         dividerColor: AppColors.divider,
         chipTheme: ChipThemeData(
           backgroundColor: AppColors.lavenderBg,
-          labelStyle: const TextStyle(
-            color: AppColors.lavenderDark,
-            fontSize: 10,
-          ),
+          labelStyle: const TextStyle(color: AppColors.lavenderDark, fontSize: 10),
           side: BorderSide.none,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
         inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: AppColors.lavenderBg,
+          filled: true, fillColor: AppColors.lavenderBg,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide:
-            const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
+            borderSide: const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide:
-            const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
+            borderSide: const BorderSide(color: AppColors.lavenderBorder, width: 0.5),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: AppColors.lavender, width: 1),
           ),
-          hintStyle:
-          const TextStyle(color: AppColors.textHint, fontSize: 12),
-          contentPadding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 12),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.lavender,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
+            backgroundColor: AppColors.lavender, foregroundColor: Colors.white,
+            elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
           ),
         ),
       ),
       home: FutureBuilder<bool>(
         future: AuthService.isLoggedIn(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const _SplashScreen();
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const _SplashScreen();
           if (snapshot.data == true) return const MainScaffold();
           return const LoginScreen();
         },
@@ -129,11 +89,8 @@ class SseudeusOnApp extends StatelessWidget {
   }
 }
 
-// ─── 스플래시 ─────────────────────────────────────────────────────────────────
-
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
-
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
@@ -144,14 +101,7 @@ class _SplashScreen extends StatelessWidget {
           children: [
             Icon(Icons.medication_rounded, size: 60, color: AppColors.lavender),
             SizedBox(height: 16),
-            Text(
-              '쓰디슨',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: AppColors.lavenderDark,
-              ),
-            ),
+            Text('쓰디슨', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.lavenderDark)),
           ],
         ),
       ),
@@ -159,11 +109,8 @@ class _SplashScreen extends StatelessWidget {
   }
 }
 
-// ─── 메인 스캐폴드 ────────────────────────────────────────────────────────────
-
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
-
   @override
   State<MainScaffold> createState() => _MainScaffoldState();
 }
@@ -173,12 +120,25 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _homeKey = 0;
   int _bagKey = 0;
   int _calKey = 0;
+  int _compareKey = 0;
+
+  void _changeTab(int index) {
+    setState(() {
+      _currentIndex = index;
+      switch (index) {
+        case 0: _homeKey++; break;
+        case 1: _bagKey++; break;
+        case 2: _calKey++; break;
+        case 3: _compareKey++; break;
+      }
+    });
+  }
 
   List<Widget> get _screens => [
-    HomeScreen(key: ValueKey(_homeKey), onTabChange: (i) => setState(() => _currentIndex = i)),
+    HomeScreen(key: ValueKey(_homeKey), onTabChange: _changeTab),
     BagScreen(key: ValueKey(_bagKey)),
     CalendarScreen(key: ValueKey(_calKey)),
-    const CompareScreen(), // ③ 4번째 탭: 약 비교
+    CompareScreen(key: ValueKey(_compareKey)),
   ];
 
   @override
@@ -206,34 +166,14 @@ class _MainScaffoldState extends State<MainScaffold> {
             ),
             child: Row(
               children: [
-                _PillNavItem(
-                  icon: Icons.home_outlined,
-                  activeIcon: Icons.home_rounded,
-                  label: '홈',
-                  isActive: _currentIndex == 0,
-                  onTap: () => setState(() { _currentIndex = 0; _homeKey++; }),
-                ),
-                _PillNavItem(
-                  icon: Icons.medication_outlined,
-                  activeIcon: Icons.medication_rounded,
-                  label: '약봉투',
-                  isActive: _currentIndex == 1,
-                  onTap: () => setState(() { _currentIndex = 1; _bagKey++; }),
-                ),
-                _PillNavItem(
-                  icon: Icons.calendar_today_outlined,
-                  activeIcon: Icons.calendar_today,
-                  label: '캘린더',
-                  isActive: _currentIndex == 2,
-                  onTap: () => setState(() { _currentIndex = 2; _calKey++; }),
-                ),
-                _PillNavItem(
-                  icon: Icons.compare_arrows_outlined,
-                  activeIcon: Icons.compare_arrows_rounded,
-                  label: '약 비교',
-                  isActive: _currentIndex == 3,
-                  onTap: () => setState(() => _currentIndex = 3),
-                ),
+                _PillNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded,
+                    label: '홈', isActive: _currentIndex == 0, onTap: () => _changeTab(0)),
+                _PillNavItem(icon: Icons.medication_outlined, activeIcon: Icons.medication_rounded,
+                    label: '약봉투', isActive: _currentIndex == 1, onTap: () => _changeTab(1)),
+                _PillNavItem(icon: Icons.calendar_today_outlined, activeIcon: Icons.calendar_today,
+                    label: '캘린더', isActive: _currentIndex == 2, onTap: () => _changeTab(2)),
+                _PillNavItem(icon: Icons.compare_arrows_outlined, activeIcon: Icons.compare_arrows_rounded,
+                    label: '약 비교', isActive: _currentIndex == 3, onTap: () => _changeTab(3)),
               ],
             ),
           ),
@@ -243,8 +183,6 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 }
 
-// ─── 알약 탭 아이템 ───────────────────────────────────────────────────────────
-
 class _PillNavItem extends StatelessWidget {
   final IconData icon;
   final IconData activeIcon;
@@ -253,17 +191,14 @@ class _PillNavItem extends StatelessWidget {
   final VoidCallback onTap;
 
   const _PillNavItem({
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-    required this.isActive,
-    required this.onTap,
+    required this.icon, required this.activeIcon, required this.label,
+    required this.isActive, required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      flex: isActive ? 2 : 2, // 활성 탭 살짝만 넓게
+      flex: isActive ? 3 : 2,
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
@@ -277,27 +212,17 @@ class _PillNavItem extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                isActive ? activeIcon : icon,
-                size: 18,
-                color: isActive ? Colors.white : AppColors.textHint,
-              ),
-              // 활성 탭만 라벨 표시
+              Icon(isActive ? activeIcon : icon, size: 18,
+                  color: isActive ? Colors.white : AppColors.textHint),
               AnimatedSize(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeInOut,
                 child: isActive
                     ? Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                )
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Text(label, style: const TextStyle(
+                            fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white)),
+                      )
                     : const SizedBox.shrink(),
               ),
             ],
