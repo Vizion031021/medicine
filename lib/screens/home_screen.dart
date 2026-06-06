@@ -593,6 +593,8 @@ class _HomeScreenState extends State<HomeScreen>
                         const SizedBox(width: 4),
                         Text('${items.where((s) => s.done).length}/${items.length}',
                             style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
+                        const Spacer(),
+                        _BagCompleteButton(items: items, onChanged: _loadTodaySchedules),
                       ]),
                     ),
                     const Divider(height: 0.5, color: AppColors.cardBorder),
@@ -890,6 +892,14 @@ class _ScheduleRowState extends State<_ScheduleRow> {
   @override
   void initState() { super.initState(); _done = widget.item.done; }
 
+  @override
+  void didUpdateWidget(_ScheduleRow old) {
+    super.didUpdateWidget(old);
+    if (old.item.done != widget.item.done) {
+      setState(() => _done = widget.item.done);
+    }
+  }
+
   String _mealLabel(String t) {
     final h = int.tryParse(t.split(':').first) ?? 9;
     if (h < 11) return '아침'; if (h < 16) return '점심'; return '저녁';
@@ -972,6 +982,68 @@ class _ScheduleRowState extends State<_ScheduleRow> {
         if (!widget.isLast)
           const Divider(height: 0.5, color: AppColors.cardBorder, indent: 14, endIndent: 14),
       ],
+    );
+  }
+}
+
+// ─── 약봉투 전체 복용 완료 버튼 ──────────────────────────────────────────────
+
+class _BagCompleteButton extends StatefulWidget {
+  final List<_ScheduleItem> items;
+  final VoidCallback? onChanged;
+  const _BagCompleteButton({required this.items, this.onChanged});
+
+  @override
+  State<_BagCompleteButton> createState() => _BagCompleteButtonState();
+}
+
+class _BagCompleteButtonState extends State<_BagCompleteButton> {
+  bool _isLoading = false;
+
+  bool get _allDone => widget.items.every((s) => s.done);
+
+  Future<void> _toggleAll() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    final next = !_allDone;
+    try {
+      for (final item in widget.items) {
+        if (item.scheduleId != null) {
+          await ScheduleService.setTaken(scheduleId: item.scheduleId!, isTaken: next);
+        }
+      }
+      widget.onChanged?.call();
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allDone = _allDone;
+    return GestureDetector(
+      onTap: _toggleAll,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: allDone ? AppColors.lavender : AppColors.lavenderBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: allDone ? AppColors.lavender : AppColors.lavenderBorder, width: 0.8),
+        ),
+        child: _isLoading
+            ? const SizedBox(width: 12, height: 12,
+            child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.lavender))
+            : Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(allDone ? Icons.check_circle : Icons.check_circle_outline,
+              size: 12, color: allDone ? Colors.white : AppColors.lavender),
+          const SizedBox(width: 3),
+          Text(allDone ? '복용완료' : '복용',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                  color: allDone ? Colors.white : AppColors.lavender)),
+        ]),
+      ),
     );
   }
 }

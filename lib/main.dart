@@ -94,9 +94,18 @@ class _SplashScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.medication_rounded, size: 60, color: AppColors.lavender),
+            Image(
+              image: AssetImage('assets/icon/app_icon.png'),
+              width: 100,
+              height: 100,
+            ),
             SizedBox(height: 16),
-            Text('쓰디슨', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.lavenderDark)),
+            Text('쓰디슨',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700,
+                    color: Color(0xFF2D9B8A))),
+            SizedBox(height: 6),
+            Text('나만의 약품 관리 앱',
+                style: TextStyle(fontSize: 13, color: AppColors.textHint)),
           ],
         ),
       ),
@@ -123,7 +132,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       switch (index) {
         case 0: _homeKey++; break;
         case 1: _bagKey++; break;
-        case 2: _calKey++; break;
+      // case 2: 캘린더는 키 증가 안 함 → 필터 상태 유지
         case 3: _compareKey++; break;
       }
     });

@@ -8,8 +8,8 @@ class MedicationService {
   static final SupabaseClient _client = Supabase.instance.client;
 
   static Future<List<UserMedication>> fetchMyMedications() async {
-    final userId = await AuthService.getCurrentUserId();
-    if (userId == null || userId.isEmpty) return [];
+    final userId = AuthService.getCurrentUserId();
+    if (userId == null) return [];
 
     final rows = await _client
         .from('user_medications')
@@ -40,8 +40,8 @@ class MedicationService {
     int mealOffsetMinutes = 0,
     bool allowDuplicate = false,
   }) async {
-    final userId = await AuthService.getCurrentUserId();
-    if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
+    final userId = AuthService.getCurrentUserId();
+    if (userId == null) throw StateError('로그인이 필요합니다.');
 
     final code = drug.displayCode;
     if (code.isEmpty) throw StateError('약품 코드가 없어 약봉투에 저장할 수 없습니다.');
@@ -61,12 +61,12 @@ class MedicationService {
     final inserted = await _client
         .from('user_medications')
         .insert({
-          'user_id': userId,
-          'product_code': code,
-          'is_active': true,
-          'custom_name': customName,
-          'instruction': instruction,
-        })
+      'user_id': userId,
+      'product_code': code,
+      'is_active': true,
+      'custom_name': customName,
+      'instruction': instruction,
+    })
         .select()
         .single();
 
@@ -101,16 +101,16 @@ class MedicationService {
     required String mealTimingLabel,
     required int mealOffsetMinutes,
   }) async {
-    final userId = await AuthService.getCurrentUserId();
-    if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
+    final userId = AuthService.getCurrentUserId();
+    if (userId == null) throw StateError('로그인이 필요합니다.');
 
     await _client
         .from('user_medications')
         .update({
-          'custom_name': customName,
-          'instruction': instruction,
-          'updated_at': DateTime.now().toIso8601String(),
-        })
+      'custom_name': customName,
+      'instruction': instruction,
+      'updated_at': DateTime.now().toIso8601String(),
+    })
         .eq('id', medication.id)
         .eq('user_id', userId);
 
@@ -198,11 +198,11 @@ class MedicationService {
   }
 
   static Future<void> deactivateMedication(
-    String medicationId, {
-    String productCode = '',
-  }) async {
-    final userId = await AuthService.getCurrentUserId();
-    if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
+      String medicationId, {
+        String productCode = '',
+      }) async {
+    final userId = AuthService.getCurrentUserId();
+    if (userId == null) throw StateError('로그인이 필요합니다.');
 
     final now = DateTime.now().toIso8601String();
     final targetIds = <String>{};
@@ -229,9 +229,9 @@ class MedicationService {
     await _client
         .from('user_medications')
         .update({
-          'is_active': false,
-          'updated_at': now,
-        })
+      'is_active': false,
+      'updated_at': now,
+    })
         .eq('user_id', userId)
         .inFilter('id', targetIds.toList());
 
@@ -260,8 +260,8 @@ class ScheduleService {
     required DateTime from,
     required DateTime to,
   }) async {
-    final userId = await AuthService.getCurrentUserId();
-    if (userId == null || userId.isEmpty) return [];
+    final userId = AuthService.getCurrentUserId();
+    if (userId == null) return [];
 
     await _ensureSchedules(userId: userId, from: from, to: to);
 
@@ -290,8 +290,8 @@ class ScheduleService {
     required String scheduleId,
     required bool isTaken,
   }) async {
-    final userId = await AuthService.getCurrentUserId();
-    if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
+    final userId = AuthService.getCurrentUserId();
+    if (userId == null) throw StateError('로그인이 필요합니다.');
 
     await _client
         .from('user_schedules')
@@ -424,8 +424,8 @@ class ScheduleService {
 
   static Future<UserMedication?> _fetchMedication(String medicationId) async {
     if (medicationId.isEmpty) return null;
-    final userId = await AuthService.getCurrentUserId();
-    if (userId == null || userId.isEmpty) return null;
+    final userId = AuthService.getCurrentUserId();
+    if (userId == null) return null;
     final row = await _client
         .from('user_medications')
         .select()
@@ -447,8 +447,8 @@ class CalendarMemoService {
     required DateTime from,
     required DateTime to,
   }) async {
-    final userId = await AuthService.getCurrentUserId();
-    if (userId == null || userId.isEmpty) return [];
+    final userId = AuthService.getCurrentUserId();
+    if (userId == null) return [];
 
     final rows = await _client
         .from('calendar_memos')
@@ -467,8 +467,8 @@ class CalendarMemoService {
     required DateTime date,
     required String content,
   }) async {
-    final userId = await AuthService.getCurrentUserId();
-    if (userId == null || userId.isEmpty) throw StateError('로그인이 필요합니다.');
+    final userId = AuthService.getCurrentUserId();
+    if (userId == null) throw StateError('로그인이 필요합니다.');
     await _client.from('calendar_memos').insert({
       'user_id': userId,
       'memo_date': _ds(date),

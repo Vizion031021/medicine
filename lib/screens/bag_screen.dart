@@ -1014,11 +1014,6 @@ class _OverallWarningPanel extends StatelessWidget {
             Expanded(child: Text('전체 약 상호작용 종합',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
                     color: warnings.isEmpty ? AppColors.success : AppColors.danger))),
-            if (high.isNotEmpty) _Badge(label: '확인 필요 ${high.length}건', color: AppColors.danger, bg: AppColors.dangerBg),
-            if (high.isNotEmpty && mid.isNotEmpty) const SizedBox(width: 4),
-            if (mid.isNotEmpty) _Badge(label: '주의 ${mid.length}건', color: AppColors.warning, bg: AppColors.warningBg),
-            const SizedBox(width: 6),
-            Text('$medicationCount종', style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
           ]),
           const SizedBox(height: 8),
           if (!hasEnoughMeds)

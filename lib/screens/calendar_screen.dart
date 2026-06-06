@@ -14,6 +14,12 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
+  // ── 필터 상태 유지 (탭 전환 후에도 보존) ─────────────────────────────────
+  static DateTime? _savedFilterStart;
+  static DateTime? _savedFilterEnd;
+  static bool _savedIsFilterActive = false;
+  static bool _savedStripMode = false;
+
   // ── 달력 상태 ──────────────────────────────────────────────────────────────
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
@@ -22,7 +28,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime? _filterStart;
   DateTime? _filterEnd;
   bool _isFilterActive = false;
-  bool _stripMode = false; // 스위치: 7칸 그리드 고정
+  bool _stripMode = false; // 스위치: 달력 형식 고정
 
   // ── 데이터 ────────────────────────────────────────────────────────────────
   final Map<DateTime, List<UserSchedule>> _schedulesByDay = {};
@@ -48,6 +54,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    // 탭 전환 후에도 필터 유지
+    _filterStart = _savedFilterStart;
+    _filterEnd = _savedFilterEnd;
+    _isFilterActive = _savedIsFilterActive;
+    _stripMode = _savedStripMode;
     _loadBags();
     _loadMonth();
     _loadScheduleMemos();
@@ -211,6 +222,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _clearFilter() {
+    _savedFilterStart = null;
+    _savedFilterEnd = null;
+    _savedIsFilterActive = false;
+    _savedStripMode = false;
     setState(() {
       _isFilterActive = false;
       _filterStart = null;
@@ -339,7 +354,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 scale: 0.72,
                 child: Switch(
                   value: _stripMode,
-                  onChanged: (v) => setState(() => _stripMode = v),
+                  onChanged: (v) => setState(() {
+                    _stripMode = v;
+                    _savedStripMode = v;
+                  }),
                   activeColor: AppColors.lavender,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),

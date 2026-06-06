@@ -28,6 +28,9 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _isLoading = false;
   bool _isComparing = false;
   bool _isLoadingMyMeds = false;
+  bool _expandCompare = false;
+  int _comparePageIndex = 0;
+  final PageController _comparePageCtrl = PageController();
   String? _errorMessage;
 
   @override
@@ -41,6 +44,7 @@ class _SearchScreenState extends State<SearchScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
+    _comparePageCtrl.dispose();
     super.dispose();
   }
 
@@ -299,54 +303,140 @@ class _SearchScreenState extends State<SearchScreen> {
     final selectedBag = _selectedBag;
     final myDrugs = _myDrugs;
     final hasExtra = _extraCompareDrugs.isNotEmpty;
+    final high = _compareWarnings.where((w) => w.isHighRisk).toList();
+    final mid = _compareWarnings.where((w) => !w.isHighRisk).toList();
+    final sorted = [...high, ...mid];
+    final total = sorted.length;
+
     return Container(
-      color: AppColors.lavenderBg,
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: AppColors.cardBorder, width: 0.5)),
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // ── 헤더 ──
         Row(children: [
-          const Icon(Icons.compare_arrows_rounded, size: 16, color: AppColors.lavender),
+          Icon(
+            _compareWarnings.isEmpty ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+            size: 16,
+            color: _compareWarnings.isEmpty ? AppColors.success : AppColors.warning,
+          ),
           const SizedBox(width: 6),
           Expanded(child: Text(
-            selectedBag == null
-                ? '약봉투 전체 약 ${myDrugs.length}개'
-                : '약봉투 전체 약 ${myDrugs.length}개 · 선택 분류: ${selectedBag.name}',
+            '${myDrugs.length}개 상호작용 종합 (약봉투 약물 전체 포함)',
             maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, color: AppColors.lavenderDark, fontWeight: FontWeight.w600),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
+                color: _compareWarnings.isEmpty ? AppColors.success : AppColors.danger),
           )),
+          // ── N건 표시 + 더보기 (헤더 오른쪽) ──
+          if (total > 1) ...[
+            const SizedBox(width: 6),
+            Text('${_comparePageIndex + 1}/$total',
+                style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
+            const SizedBox(width: 4),
+          ],
           if (hasExtra)
-            InkWell(
+            GestureDetector(
               onTap: () async {
                 setState(() => _extraCompareDrugs = []);
                 await _refreshCompareWarnings();
               },
-              child: const Text('추가 선택 초기화',
-                  style: TextStyle(fontSize: 11, color: AppColors.lavender)),
+              child: const Text('초기화', style: TextStyle(fontSize: 11, color: AppColors.lavender)),
             ),
         ]),
-        if (myDrugs.isNotEmpty)
-          const Padding(padding: EdgeInsets.only(top: 5),
-              child: Text('등록된 모든 약의 상호작용을 종합하고, 검색 결과에서 새 약을 추가 비교할 수 있습니다.',
-                  style: TextStyle(fontSize: 10, color: AppColors.textHint))),
-        if (hasExtra)
-          Padding(padding: const EdgeInsets.only(top: 6),
-              child: Text('추가 비교 약: ${_extraCompareDrugs.map((d) => d.name).join(' + ')}',
-                  maxLines: 2, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w600))),
+        if (hasExtra) ...[
+          const SizedBox(height: 4),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _extraCompareDrugs.map((d) => Text(
+              '+ ${d.name}',
+              style: const TextStyle(fontSize: 10, color: AppColors.lavenderDark, fontWeight: FontWeight.w600),
+            )).toList(),
+          ),
+        ],
+        const SizedBox(height: 8),
+        // ── 결과 ──
         if (_isComparing)
-          const Padding(padding: EdgeInsets.only(top: 6),
-              child: LinearProgressIndicator(minHeight: 2)),
-        if ((myDrugs.length >= 2 || hasExtra) && !_isComparing)
-          Padding(padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                _compareWarnings.isEmpty
-                    ? '현재 함께 복용 시 주의가 필요한 조합은 확인되지 않았습니다.'
-                    : _compareWarnings
-                    .map((w) => '${w.title}: ${w.message}')
-                    .join('\n'),
-                style: TextStyle(fontSize: 10,
-                    color: _compareWarnings.isEmpty ? AppColors.success : AppColors.danger,
-                    height: 1.4),
-              )),
+          const LinearProgressIndicator(minHeight: 2)
+        else if (myDrugs.length < 2 && !hasExtra)
+          const Text('약이 2개 이상 등록되면 상호작용을 확인합니다.',
+              style: TextStyle(fontSize: 10, color: AppColors.textHint))
+        else if (_compareWarnings.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(color: AppColors.successBg, borderRadius: BorderRadius.circular(8)),
+              child: const Row(children: [
+                Icon(Icons.check_circle_outline, color: AppColors.success, size: 14),
+                SizedBox(width: 6),
+                Expanded(child: Text('현재 함께 복용 시 주의가 필요한 조합은 확인되지 않았습니다.',
+                    style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32)))),
+              ]),
+            )
+          else
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // ── 슬라이드 카드 ──
+              SizedBox(
+                height: 76,
+                child: PageView.builder(
+                  controller: _comparePageCtrl,
+                  itemCount: total,
+                  onPageChanged: (i) => setState(() => _comparePageIndex = i),
+                  itemBuilder: (ctx, i) {
+                    final w = sorted[i];
+                    final isHigh = w.isHighRisk;
+                    final color = isHigh ? AppColors.danger : AppColors.warning;
+                    final bg = isHigh ? AppColors.dangerBg : AppColors.warningBg;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: color.withOpacity(0.25), width: 0.8),
+                        ),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Container(
+                              width: 6, height: 6,
+                              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 5),
+                            Expanded(child: Text(
+                              isHigh ? '${w.title} · 확인 필요' : '${w.title} · 주의',
+                              style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700),
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                            )),
+                          ]),
+                          const SizedBox(height: 4),
+                          Text(w.message,
+                              maxLines: 3, overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, height: 1.45)),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // ── 페이지 인디케이터 ──
+              if (total > 1) ...[
+                const SizedBox(height: 8),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  ...List.generate(total, (i) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    width: _comparePageIndex == i ? 14 : 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: _comparePageIndex == i ? AppColors.lavender : AppColors.lavenderBorder,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  )),
+                ]),
+              ],
+            ]),
       ]),
     );
   }
