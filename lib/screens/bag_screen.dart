@@ -22,6 +22,9 @@ class _BagScreenState extends State<BagScreen> {
   List<DrugWarning> _bagWarnings = [];
   Map<String, String> _assignments = {};
   final Set<String> _expanded = {};
+  String? _draggingBagId;
+  String? _mergeTargetId;
+  final Map<String, GlobalKey> _bagKeys = {};
 
   // ── 상단 검색 ────────────────────────────────────────────────────────────
   final _searchCtrl = TextEditingController();
@@ -81,6 +84,7 @@ class _BagScreenState extends State<BagScreen> {
         _assignments = assignments;
         _bagWarnings = warnings;
         if (_expanded.isEmpty && bags.isNotEmpty) _expanded.add(bags.first.id);
+        for (final b in bags) { _bagKeys.putIfAbsent(b.id, () => GlobalKey()); }
       });
     } catch (_) {
       if (mounted) {
@@ -113,6 +117,74 @@ class _BagScreenState extends State<BagScreen> {
   }
 
   // ── 봉투 추가/수정 다이얼로그 ────────────────────────────────────────────
+
+  String? _getTargetBagAt(Offset globalPos, String draggingId) {
+    for (final b in _bags) {
+      if (b.id == draggingId) continue;
+      final key = _bagKeys[b.id];
+      if (key == null) continue;
+      final ctx = key.currentContext;
+      if (ctx == null) continue;
+      final rb = ctx.findRenderObject() as RenderBox?;
+      if (rb == null) continue;
+      final pos = rb.localToGlobal(Offset.zero);
+      final rect = Rect.fromLTWH(pos.dx, pos.dy, rb.size.width, rb.size.height);
+      if (rect.contains(globalPos)) return b.id;
+    }
+    return null;
+  }
+
+  Future<void> _showMergeDialog(BagData from, BagData into) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('약봉투 통합',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        content: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              RichText(text: TextSpan(
+                style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.6),
+                children: [
+                  TextSpan(text: '"${from.name}"'),
+                  const TextSpan(text: '의 모든 약물을 '),
+                  TextSpan(text: '"${into.name}"', style: const TextStyle(
+                      fontWeight: FontWeight.w700, color: AppColors.lavender)),
+                  const TextSpan(text: ' 으로 통합합니다.'),
+                ],
+              )),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: AppColors.lavenderBg,
+                    borderRadius: BorderRadius.circular(8)),
+                child: const Row(children: [
+                  Icon(Icons.check_circle_outline, size: 14, color: AppColors.success),
+                  SizedBox(width: 6),
+                  Expanded(child: Text('복용 상태는 그대로 유지됩니다.',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary))),
+                ]),
+              ),
+            ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('취소', style: TextStyle(color: AppColors.textHint))),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('통합')),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await BagService.mergeBags(from.id, into.id);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('"${from.name}" 이(가) "${into.name}" 으로 통합되었습니다.'),
+          backgroundColor: AppColors.success,
+          duration: const Duration(seconds: 2),
+        ));
+      }
+    }
+  }
 
   Future<void> _showAddBagDialog() => _showBagDialog();
 
@@ -768,26 +840,119 @@ class _BagScreenState extends State<BagScreen> {
                         .where((m) =>
                     (_assignments[m.id] ?? 'default') == bag.id)
                         .toList();
-                    return _BagCard(
-                      bag: bag,
-                      medications: meds,
-                      isExpanded: _expanded.contains(bag.id),
-                      onToggle: () => setState(() {
-                        if (_expanded.contains(bag.id)) {
-                          _expanded.remove(bag.id);
-                        } else {
-                          _expanded.add(bag.id);
-                        }
-                      }),
-                      onMedTap: _showEditMedicationDialog,
-                      onMedDelete: _removeMedication,
-                      onBagEdit: () => _showBagDialog(editBag: bag),
-                      onBagDelete: bag.id == 'default'
-                          ? null
-                          : () async {
-                        await BagService.removeBag(bag.id);
-                        await _load();
-                      },
+                    final isMergeTarget = _mergeTargetId == bag.id;
+                    _bagKeys.putIfAbsent(bag.id, () => GlobalKey());
+
+                    return AnimatedContainer(
+                      key: _bagKeys[bag.id],
+                      duration: const Duration(milliseconds: 200),
+                      margin: EdgeInsets.only(
+                          bottom: isMergeTarget ? 2 : 10,
+                          top: isMergeTarget ? 2 : 0),
+                      decoration: isMergeTarget ? BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.lavender, width: 2),
+                        color: AppColors.lavenderBg,
+                      ) : null,
+                      child: Column(children: [
+                        if (isMergeTarget)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                              const Icon(Icons.merge_type, size: 14, color: AppColors.lavender),
+                              const SizedBox(width: 4),
+                              Text('통합 영역 — ${bag.name}',
+                                  style: const TextStyle(fontSize: 11,
+                                      color: AppColors.lavender, fontWeight: FontWeight.w700)),
+                            ]),
+                          ),
+                        LongPressDraggable<String>(
+                          data: bag.id,
+                          delay: const Duration(milliseconds: 400),
+                          onDragStarted: () => setState(() {
+                            _draggingBagId = bag.id;
+                            _expanded.remove(bag.id);
+                          }),
+                          onDragUpdate: (details) {
+                            final target = _getTargetBagAt(details.globalPosition, bag.id);
+                            if (target != _mergeTargetId) {
+                              setState(() => _mergeTargetId = target);
+                            }
+                          },
+                          onDragEnd: (details) async {
+                            final target = _mergeTargetId;
+                            setState(() { _draggingBagId = null; _mergeTargetId = null; });
+                            if (target != null) {
+                              final intoBag = _bags.firstWhere(
+                                      (b) => b.id == target, orElse: () => bag);
+                              await _showMergeDialog(bag, intoBag);
+                            }
+                          },
+                          feedback: Material(
+                            elevation: 8,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: MediaQuery.of(context).size.width - 28,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: bag.color, width: 1.5),
+                              ),
+                              child: Row(children: [
+                                Container(width: 10, height: 10,
+                                    decoration: BoxDecoration(color: bag.color, shape: BoxShape.circle)),
+                                const SizedBox(width: 10),
+                                Text(bag.name, style: const TextStyle(fontSize: 13,
+                                    fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                                const SizedBox(width: 8),
+                                Text('${meds.length}개', style: TextStyle(fontSize: 11, color: bag.color)),
+                                const Spacer(),
+                                const Icon(Icons.drag_indicator, size: 18, color: AppColors.textHint),
+                              ]),
+                            ),
+                          ),
+                          childWhenDragging: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: AppColors.lavenderBg,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.lavenderBorder, width: 1),
+                            ),
+                            child: Row(children: [
+                              Container(width: 10, height: 10,
+                                  decoration: BoxDecoration(
+                                      color: bag.color.withOpacity(0.4), shape: BoxShape.circle)),
+                              const SizedBox(width: 10),
+                              Text(bag.name, style: TextStyle(fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary.withOpacity(0.4))),
+                            ]),
+                          ),
+                          child: _BagCard(
+                            bag: bag,
+                            medications: meds,
+                            isExpanded: _expanded.contains(bag.id),
+                            onToggle: () => setState(() {
+                              if (_expanded.contains(bag.id)) {
+                                _expanded.remove(bag.id);
+                              } else {
+                                _expanded.add(bag.id);
+                              }
+                            }),
+                            onMedTap: _showEditMedicationDialog,
+                            onMedDelete: _removeMedication,
+                            onBagEdit: () => _showBagDialog(editBag: bag),
+                            onBagDelete: bag.id == 'default'
+                                ? null
+                                : () async {
+                              await BagService.removeBag(bag.id);
+                              await _load();
+                            },
+                          ),
+                        ),
+                      ]),
                     );
                   }),
                 ],

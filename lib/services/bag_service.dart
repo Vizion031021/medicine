@@ -150,6 +150,40 @@ class BagService {
     await prefs.setString(await _assignmentsKey(), jsonEncode(assignments));
   }
 
+  // ── 봉투 순서 변경 ───────────────────────────────────────────────────────────
+
+  static Future<void> reorderBags(List<String> orderedIds) async {
+    final prefs = await SharedPreferences.getInstance();
+    final bags = await getBags();
+    final sorted = orderedIds
+        .map((id) { try { return bags.firstWhere((b) => b.id == id); } catch (_) { return null; } })
+        .whereType<BagData>()
+        .toList();
+    // orderedIds에 없는 봉투도 포함
+    for (final b in bags) {
+      if (!sorted.any((s) => s.id == b.id)) sorted.add(b);
+    }
+    await _saveBags(prefs, sorted);
+  }
+
+  // ── 봉투 통합 (from → into) ───────────────────────────────────────────────
+  // 약물 할당만 이동, 복용 상태는 Supabase schedules에 저장되므로 그대로 유지됨
+
+  static Future<void> mergeBags(String fromBagId, String intoBagId) async {
+    if (fromBagId == intoBagId) return;
+    final prefs = await SharedPreferences.getInstance();
+    final assignments = await getAssignments();
+    // fromBag의 모든 약물을 intoBag으로 이동
+    assignments.updateAll((medId, bagId) =>
+    bagId == fromBagId ? intoBagId : bagId);
+    await prefs.setString(await _assignmentsKey(), jsonEncode(assignments));
+    // fromBag 삭제 (기본 봉투는 삭제 안 함)
+    if (fromBagId != _defaultBag.id) {
+      final bags = await getBags();
+      await _saveBags(prefs, bags.where((b) => b.id != fromBagId).toList());
+    }
+  }
+
   // ── 내부 저장 ─────────────────────────────────────────────────────────────
 
   static Future<void> _saveBags(SharedPreferences prefs, List<BagData> bags) async {
